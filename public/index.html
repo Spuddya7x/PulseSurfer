@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PulseSurfer Trading Bot</title>
+    <link rel="icon" href="/arb_icon.svg" type="image/svg+xml">
+    <style>
+        :root {
+            --solana-purple: #9945FF;
+            --solana-cyan: #14F195;
+            --dark-purple: #6B2FBA;
+            --light-cyan: #A8FED5;
+            --background: #1E1E2E;
+            --card-bg: #2A2A3C;
+            --text: #FFFFFF;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            line-height: 1.6;
+            color: var(--text);
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: var(--background);
+        }
+
+        .container {
+            background-color: var(--card-bg);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 0 20px rgba(153, 69, 255, 0.1);
+        }
+
+        h1,
+        h2,
+        h3 {
+            color: var(--solana-cyan);
+            text-shadow: 1px 1px 3px rgba(20, 241, 149, 0.3);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(153, 69, 255, 0.2);
+            border: 1px solid var(--solana-purple);
+        }
+
+        .sentiment-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+
+        .sentiment-input {
+            width: 48%;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: var(--solana-cyan);
+        }
+
+        input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--solana-purple);
+            border-radius: 4px;
+            box-sizing: border-box;
+            background-color: var(--background);
+            color: var(--text);
+        }
+
+        button {
+            background-color: var(--solana-purple);
+            color: var(--text);
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: var(--dark-purple);
+        }
+
+        .trading-data-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+
+        .data-item {
+            background-color: var(--background);
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid var(--solana-cyan);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            word-break: break-word;
+        }
+
+        .data-label {
+            font-weight: bold;
+            color: var(--solana-cyan);
+        }
+
+        .data-value {
+            font-family: 'Courier New', monospace;
+            color: var(--text);
+            text-align: right;
+        }
+
+        .highlight {
+            color: var(--solana-purple);
+            font-weight: bold;
+        }
+
+        #updateFeedback {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .success {
+            background-color: var(--solana-cyan);
+            color: var(--background);
+        }
+
+        .error {
+            background-color: #FF6B6B;
+            color: var(--text);
+        }
+
+        .info {
+            background-color: var(--solana-purple);
+            color: var(--text);
+        }
+
+        .chart-section {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 20px;
+        }
+
+        .chart-container {
+            width: 100%;
+            margin-bottom: 20px;
+            position: relative;
+            border: 1px solid var(--solana-cyan);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .chart-container iframe {
+            width: 100%;
+            height: 600px;
+            border: none;
+        }
+
+        .chart-sidebar {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .fgi-display,
+        .recent-trades {
+            width: 100%;
+            background-color: var(--card-bg);
+            border-radius: 10px;
+            padding: 0px;
+            margin-bottom: 20px;
+        }
+
+        .fgi-display h3,
+        .recent-trades h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            color: var(--solana-cyan);
+        }
+
+        #fgiValue {
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        .fgi-gauge-container {
+            position: relative;
+            width: 100%;
+            height: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        #fgiGauge {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to right, #FF4136, #FF851B, #FFDC00, #2ECC40, #0074D9);
+        }
+
+        #fgiPointer {
+            position: absolute;
+            top: -5px;
+            width: 4px;
+            height: 30px;
+            background-color: white;
+            transform: translateX(-50%);
+        }
+
+        #currentSentiment {
+            text-align: center;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        .recent-trades {
+            width: 100%;
+            background-color: var(--card-bg);
+            border-radius: 10px;
+            padding: 0px;
+            margin-bottom: 0px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        #tradeList {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        #tradeList li {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            background-color: rgba(255, 255, 255, 0.05);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        #tradeList li:last-child {
+            margin-bottom: 0;
+        }
+
+        #tradeList li:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .trade-buy {
+            border-left: 4px solid var(--solana-cyan);
+        }
+
+        .trade-sell {
+            border-left: 4px solid var(--solana-purple);
+        }
+
+        /* Add some styling for the scrollbar */
+        #tradeList::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #tradeList::-webkit-scrollbar-track {
+            background: var(--background);
+            border-radius: 4px;
+        }
+
+        #tradeList::-webkit-scrollbar-thumb {
+            background: var(--solana-purple);
+            border-radius: 4px;
+        }
+
+        #tradeList::-webkit-scrollbar-thumb:hover {
+            background: var(--dark-purple);
+        }
+
+        @media (min-width: 1024px) {
+            .chart-section {
+                flex-direction: row;
+            }
+
+            @media (max-width: 600px) {
+                .data-item .data-value {
+                    display: block;
+                    margin-top: 5px;
+                }
+            }
+
+            .chart-container {
+                width: 70%;
+                margin-bottom: 0;
+            }
+
+            .chart-sidebar {
+                width: 28%;
+                margin-left: 2%;
+            }
+
+            .fgi-display,
+            .recent-trades {
+                width: 100%;
+            }
+        }
+
+        .pnl-summary {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .pnl-summary span {
+            flex: 1;
+            padding: 5px;
+            border: 1px solid var(--solana-purple);
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        @media (max-width: 600px) {
+            .pnl-summary {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>PulseSurfer Fear and Greed Trader</h1>
+        <p>By SpuddyA7X</p>
+        <div class="chart-section">
+            <div class="chart-container">
+                <iframe
+                    src="https://birdeye.so/tv-widget/So11111111111111111111111111111111111111112?chain=solana&viewMode=pair&chartInterval=15&chartType=AREA&chartTimezone=Europe%2FLondon&chartLeftToolbar=hide&theme=dark&chartOverrides=mainSeriesProperties.areaStyle.linecolor%3A%239945ff"
+                    allowfullscreen></iframe>
+            </div>
+            <div class="chart-sidebar">
+                <div class="fgi-display">
+                    <h3>Fear & Greed Index</h3>
+                    <div id="fgiValue"></div>
+                    <div class="fgi-gauge-container">
+                        <div id="fgiGauge"></div>
+                        <div id="fgiPointer"></div>
+                    </div>
+                    <div id="currentSentiment"></div>
+                </div>
+                <div class="recent-trades">
+                    <h3>Recent Trades</h3>
+                    <ul id="tradeList"></ul>
+                </div>
+            </div>
+        </div>
+        <div class="grid">
+            <div class="card">
+                <h2>Trading Parameters</h2>
+                <form id="paramForm">
+                    <div class="sentiment-row">
+                        <div class="sentiment-input">
+                            <label for="extremeGreedBoundary">Extreme Greed Boundary:</label>
+                            <input type="number" id="extremeGreedBoundary" name="extremeGreedBoundary" min="0"
+                                max="100">
+                        </div>
+                        <div class="sentiment-input">
+                            <label for="extremeGreedMultiplier">Extreme Greed Multiplier:</label>
+                            <input type="number" id="extremeGreedMultiplier" name="extremeGreedMultiplier" min="0"
+                                max="1" step="0.0001">
+                        </div>
+                    </div>
+                    <div class="sentiment-row">
+                        <div class="sentiment-input">
+                            <label for="greedBoundary">Greed Boundary:</label>
+                            <input type="number" id="greedBoundary" name="greedBoundary" min="0" max="100">
+                        </div>
+                        <div class="sentiment-input">
+                            <label for="greedMultiplier">Greed Multiplier:</label>
+                            <input type="number" id="greedMultiplier" name="greedMultiplier" min="0" max="1"
+                                step="0.0001">
+                        </div>
+                    </div>
+                    <div class="sentiment-row">
+                        <div class="sentiment-input">
+                            <label for="fearBoundary">Fear Boundary:</label>
+                            <input type="number" id="fearBoundary" name="fearBoundary" min="0" max="100">
+                        </div>
+                        <div class="sentiment-input">
+                            <label for="fearMultiplier">Fear Multiplier:</label>
+                            <input type="number" id="fearMultiplier" name="fearMultiplier" min="0" max="1"
+                                step="0.0001">
+                        </div>
+                    </div>
+                    <div class="sentiment-row">
+                        <div class="sentiment-input">
+                            <label for="extremeFearBoundary">Extreme Fear Boundary:</label>
+                            <input type="number" id="extremeFearBoundary" name="extremeFearBoundary" min="0" max="100">
+                        </div>
+                        <div class="sentiment-input">
+                            <label for="extremeFearMultiplier">Extreme Fear Multiplier:</label>
+                            <input type="number" id="extremeFearMultiplier" name="extremeFearMultiplier" min="0" max="1"
+                                step="0.0001">
+                        </div>
+                    </div>
+                    <button type="submit">Update Parameters</button>
+                </form>
+                <div id="updateFeedback"></div>
+            </div>
+            <div class="card">
+                <h2>Current Trading Data</h2>
+                <div id="tradingData" class="trading-data-grid">
+                    <!-- Trading data will be inserted here by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const tradingDataElement = document.getElementById('tradingData');
+        const paramForm = document.getElementById('paramForm');
+        const feedbackElement = document.getElementById('updateFeedback');
+        const fgiValueElement = document.getElementById('fgiValue');
+        const fgiGaugeElement = document.getElementById('fgiGauge');
+        const fgiPointerElement = document.getElementById('fgiPointer');
+        const tradeListElement = document.getElementById('tradeList');
+
+        let sentimentBoundaries = {
+            EXTREME_FEAR: 20,
+            FEAR: 40,
+            GREED: 60,
+            EXTREME_GREED: 80
+        };
+
+        // Add a loading indicator
+        tradingDataElement.innerHTML = '<div class="loading">Loading trading data...</div>';
+
+        function updateTradingData(data) {
+                tradingDataElement.innerHTML = `
+        <div class="data-item">
+            <span class="data-label">Timestamp:</span>
+            <span class="data-value">${data.timestamp || 'N/A'}</span>
+        </div>
+        <div class="data-item">
+            <span class="data-label">PNL Summary:</span>
+            <div class="data-value pnl-summary" style="display: flex; justify-content: space-between; gap: 10px;">
+                <span style="flex: 1; padding: 5px; border: 1px solid var(--solana-purple); border-radius: 4px; text-align: center;">
+                    Realized: $${data.realizedPnL || '0.00000'}
+                </span>
+                <span style="flex: 1; padding: 5px; border: 1px solid var(--solana-purple); border-radius: 4px; text-align: center;">
+                    Avg Buy: $${data.averageEntryPrice || 'N/A'}
+                </span>
+                <span style="flex: 1; padding: 5px; border: 1px solid var(--solana-purple); border-radius: 4px; text-align: center;">
+                    Avg Sell: $${data.averageSellPrice || 'N/A'}
+                </span>
+            </div>
+        </div>
+        <div class="data-item">
+            <span class="data-label">Total P&L:</span>
+            <span class="data-value highlight">$${data.totalPnL || '0.00000'}</span>
+        </div>
+        <div class="data-item">
+            <span class="data-label">Unrealized P&L:</span>
+            <span class="data-value">$${data.unrealizedPnL || '0.00000'}</span>
+        </div>
+        <div class="data-item">
+            <span class="data-label">Current SOL Price:</span>
+            <span class="data-value">$${data.price || 'N/A'}</span>
+        </div>
+        <div class="data-item">
+            <span class="data-label">Total Portfolio Balance:</span>
+            <span class="data-value">$${data.portfolioValue || 'N/A'}</span>
+        </div>
+        <div class="data-item">
+            <span class="data-label">User SOL Balance:</span>
+            <span class="data-value">${data.solBalance || 'N/A'} SOL</span>
+        </div>
+        <div class="data-item">
+            <span class="data-label">User USDC Balance:</span>
+            <span class="data-value">${data.usdcBalance || 'N/A'} USDC</span>
+        </div>
+        <div class="data-item">
+            <span class="data-label">Fear & Greed Index:</span>
+            <span class="data-value">${data.fearGreedIndex || 'N/A'} - ${data.sentiment || 'N/A'}</span>
+        </div>
+    `;
+
+            updateFGI(data.fearGreedIndex);
+        }
+
+        function updateFGI(value) {
+            const fgiValueElement = document.getElementById('fgiValue');
+            const fgiPointerElement = document.getElementById('fgiPointer');
+
+            fgiValueElement.textContent = value;
+            const position = Math.max(0, Math.min(100, value)); // Ensure value is between 0 and 100
+            fgiPointerElement.style.left = `${position}%`;
+
+            // Determine the current sentiment
+            let currentSentiment;
+            if (value < sentimentBoundaries.EXTREME_FEAR) {
+                currentSentiment = 'Extreme Fear';
+            } else if (value < sentimentBoundaries.FEAR) {
+                currentSentiment = 'Fear';
+            } else if (value < sentimentBoundaries.GREED) {
+                currentSentiment = 'Neutral';
+            } else if (value < sentimentBoundaries.EXTREME_GREED) {
+                currentSentiment = 'Greed';
+            } else {
+                currentSentiment = 'Extreme Greed';
+            }
+
+            // Update the sentiment text
+            const currentSentimentElement = document.getElementById('currentSentiment');
+            if (currentSentimentElement) {
+                currentSentimentElement.textContent = currentSentiment;
+            }
+        }
+
+        function updateSentimentBoundaries(newBoundaries) {
+            sentimentBoundaries = { ...newBoundaries };
+            // Refresh the FGI display with the current value
+            let currentFGI = document.getElementById('fgiValue').textContent;
+            updateFGI(parseInt(currentFGI));
+        }
+
+        // Update the existing updateFormValues function
+        function updateFormValues(params) {
+            if (params.SENTIMENT_BOUNDARIES) {
+                document.getElementById('extremeFearBoundary').value = params.SENTIMENT_BOUNDARIES.EXTREME_FEAR;
+                document.getElementById('fearBoundary').value = params.SENTIMENT_BOUNDARIES.FEAR;
+                document.getElementById('greedBoundary').value = params.SENTIMENT_BOUNDARIES.GREED;
+                document.getElementById('extremeGreedBoundary').value = params.SENTIMENT_BOUNDARIES.EXTREME_GREED;
+
+                // Update the sentiment boundaries and refresh the FGI display
+                updateSentimentBoundaries(params.SENTIMENT_BOUNDARIES);
+            }
+            if (params.SENTIMENT_MULTIPLIERS) {
+                document.getElementById('extremeFearMultiplier').value = params.SENTIMENT_MULTIPLIERS.EXTREME_FEAR;
+                document.getElementById('fearMultiplier').value = params.SENTIMENT_MULTIPLIERS.FEAR;
+                document.getElementById('greedMultiplier').value = params.SENTIMENT_MULTIPLIERS.GREED;
+                document.getElementById('extremeGreedMultiplier').value = params.SENTIMENT_MULTIPLIERS.EXTREME_GREED;
+            }
+            updateSentimentBoundaries(params);
+        }
+
+        function addTrade(trade) {
+            if (!trade) return; // Don't add if there's no trade data
+
+            const tradeItem = document.createElement('li');
+            const tradeDate = new Date(trade.timestamp);
+            const formattedTime = tradeDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+            const action = trade.type;
+            const amount = trade.amount.toFixed(6);
+            const price = trade.price.toFixed(2);
+
+            tradeItem.textContent = `${formattedTime}: ${action} ${amount} SOL at $${price}`;
+            tradeItem.classList.add(action.toLowerCase() === 'bought' ? 'trade-buy' : 'trade-sell');
+
+            tradeListElement.appendChild(tradeItem, tradeListElement.firstChild);
+            if (tradeListElement.children.length > 10) {
+                tradeListElement.removeChild(tradeListElement.lastChild);
+            }
+        }
+
+        function fetchRecentTrades() {
+            fetch('/api/recent-trades')
+                .then(response => response.json())
+                .then(trades => {
+                    tradeListElement.innerHTML = ''; // Clear existing trades
+                    trades.forEach(trade => addTrade(trade));
+                })
+                .catch(error => console.error('Error fetching recent trades:', error));
+        }
+
+        function fetchInitialData() {
+            fetch('/api/initial-data')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Initial data not yet available');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    updateTradingData(data);
+                    return fetch('/api/params');
+                })
+                .then(response => response.json())
+                .then(data => {
+                    updateFormValues(data);
+                })
+                .catch(error => {
+                    console.error('Error fetching initial data:', error);
+                    showFeedback('Retrying in 5 seconds...', 'info');
+                    setTimeout(fetchInitialData, 5000);
+                });
+        }
+
+        // Start fetching initial data
+        fetchInitialData();
+
+        // Listen for trading updates
+        socket.on('tradingUpdate', (data) => {
+            updateTradingData(data);
+            console.log('Received trading update:', data);
+            if (data.recentTrades) {
+                tradeListElement.innerHTML = ''; // Clear existing trades
+                data.recentTrades.forEach(trade => addTrade(trade));
+            }
+        });
+
+        socket.on('paramsUpdated', (params) => {
+            console.log('Parameters updated:', params);
+            updateFormValues(params);
+        });
+
+        paramForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const formData = new FormData(paramForm);
+            const params = {
+                SENTIMENT_BOUNDARIES: {
+                    EXTREME_FEAR: parseInt(formData.get('extremeFearBoundary')),
+                    FEAR: parseInt(formData.get('fearBoundary')),
+                    GREED: parseInt(formData.get('greedBoundary')),
+                    EXTREME_GREED: parseInt(formData.get('extremeGreedBoundary'))
+                },
+                SENTIMENT_MULTIPLIERS: {
+                    EXTREME_FEAR: parseFloat(formData.get('extremeFearMultiplier')),
+                    FEAR: parseFloat(formData.get('fearMultiplier')),
+                    GREED: parseFloat(formData.get('greedMultiplier')),
+                    EXTREME_GREED: parseFloat(formData.get('extremeGreedMultiplier'))
+                }
+            };
+
+            fetch('/api/params', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(params),
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Server response:', data);
+                    showFeedback('Parameters sent to server. Waiting for confirmation...', 'info');
+                })
+                .catch((error) => {
+                    console.error('Error:', error);
+                    showFeedback('Error updating parameters. Please try again.', 'error');
+                });
+        });
+
+        function updateFormValues(params) {
+            if (params.SENTIMENT_BOUNDARIES) {
+                document.getElementById('extremeFearBoundary').value = params.SENTIMENT_BOUNDARIES.EXTREME_FEAR;
+                document.getElementById('fearBoundary').value = params.SENTIMENT_BOUNDARIES.FEAR;
+                document.getElementById('greedBoundary').value = params.SENTIMENT_BOUNDARIES.GREED;
+                document.getElementById('extremeGreedBoundary').value = params.SENTIMENT_BOUNDARIES.EXTREME_GREED;
+            }
+            if (params.SENTIMENT_MULTIPLIERS) {
+                document.getElementById('extremeFearMultiplier').value = params.SENTIMENT_MULTIPLIERS.EXTREME_FEAR;
+                document.getElementById('fearMultiplier').value = params.SENTIMENT_MULTIPLIERS.FEAR;
+                document.getElementById('greedMultiplier').value = params.SENTIMENT_MULTIPLIERS.GREED;
+                document.getElementById('extremeGreedMultiplier').value = params.SENTIMENT_MULTIPLIERS.EXTREME_GREED;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchRecentTrades();
+        });
+
+        function showFeedback(message, type) {
+            feedbackElement.textContent = message;
+            feedbackElement.className = type;
+            setTimeout(() => {
+                feedbackElement.textContent = '';
+                feedbackElement.className = '';
+            }, 5000);
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,8 @@
+# Dependency directories
+node_modules/
+
+# Environment variables file
+.env
+
+# Trading Data log
+trading_data.csv
