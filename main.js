@@ -8,7 +8,6 @@ const cheerio = require('cheerio');
 const cliProgress = require('cli-progress');
 const { Keypair, Connection, PublicKey, LAMPORTS_PER_SOL, VersionedTransaction } = require('@solana/web3.js');
 const { getAssociatedTokenAddress } = require("@solana/spl-token");
-//const { struct, u64 } = require('@project-serum/borsh');
 const { Wallet } = require('@project-serum/anchor');
 const fetch = require('cross-fetch');
 
@@ -59,6 +58,15 @@ let keypair, connection;
 let wallet;
 let MAX_RETRIES = 5;
 let RETRY_DELAY = 2000; // 2 seconds
+let startTime = Date.now();
+let totalCycles = 0;
+let startingPortfolioValue = 0;
+let totalExtremeFearBuys = 0;
+let totalFearBuys = 0;
+let totalGreedSells = 0;
+let totalExtremeGreedSells = 0;
+let totalVolumeSol = 0;
+let totalVolumeUsdc = 0;
 
 updateTradingScript = handleParameterUpdate;
 
@@ -468,10 +476,10 @@ function updatePositionFromSwap(swapResult, sentiment) {
   const { inputAmount, outputAmount, price, isBuying } = swapResult;
 
   if (isBuying) {
-    position.addTrade('buy', outputAmount, inputAmount, price);
+    position.addTrade('buy', outputAmount, inputAmount, price, sentiment);
     console.log(`Bought ${outputAmount.toFixed(SOL.DECIMALS)} SOL at $${price.toFixed(2)} for ${inputAmount.toFixed(USDC.DECIMALS)} USDC`);
   } else {
-    position.addTrade('sell', inputAmount, outputAmount, price);
+    position.addTrade('sell', inputAmount, outputAmount, price, sentiment);
     console.log(`Sold ${inputAmount.toFixed(SOL.DECIMALS)} SOL at $${price.toFixed(2)} for ${outputAmount.toFixed(USDC.DECIMALS)} USDC`);
   }
 
@@ -492,11 +500,14 @@ function logPositionUpdate(currentPrice) {
 
 async function main() {
   try {
+    console.clear();
+    position.incrementCycle();
+
     const fearGreedIndex = await fetchFearGreedIndex();
     const sentiment = getSentiment(fearGreedIndex);
     const currentPrice = await fetchPrice(BASE_PRICE_URL, SOL);
     const timestamp = getTimestamp();
-    //console.clear();
+
     console.log(`\n--- Trading Cycle: ${timestamp} ---`);
     console.log(`Fear & Greed Index: ${fearGreedIndex} - Sentiment: ${sentiment}`);
     console.log(`Current SOL Price: $${currentPrice.toFixed(2)}`);
@@ -517,7 +528,6 @@ async function main() {
 
       if (swapResult) {
         updatePositionFromSwap(swapResult, sentiment, currentPrice);
-        // Create recentTrade object with a consistent structure
         recentTrade = {
           type: swapResult.isBuying ? "Bought" : "Sold",
           amount: swapResult.isBuying ? swapResult.outputAmount : swapResult.inputAmount,
@@ -528,21 +538,27 @@ async function main() {
     }
 
     if (recentTrade) {
-      addRecentTrade(recentTrade); // Add the trade to the recent trades list
+      addRecentTrade(recentTrade);
       console.log("Trade executed:", recentTrade);
     } else {
       console.log("No trade executed this cycle.");
     }
 
-    const portfolioValue = position.usdcBalance + position.solBalance * currentPrice;
+    const portfolioValue = position.getCurrentValue(currentPrice);
+    const enhancedStats = position.getEnhancedStatistics(currentPrice);
 
-    logData(timestamp, currentPrice, fearGreedIndex, sentiment, position.usdcBalance, position.solBalance, position.getRealizedPnL(), position.getUnrealizedPnL(currentPrice), position.getTotalPnL(currentPrice));
+    console.log("\n--- Enhanced Trading Statistics ---");
+    console.log(`Total Script Runtime: ${enhancedStats.totalRuntime} hours`);
+    console.log(`Total Cycles: ${enhancedStats.totalCycles}`);
+    console.log(`Portfolio Change: $${enhancedStats.portfolioChange.start} -> $${enhancedStats.portfolioChange.current} (${enhancedStats.portfolioChange.change >= 0 ? '+' : ''}${enhancedStats.portfolioChange.change})`);
+    console.log(`Total Extreme Fear Buys: ${enhancedStats.extremeFearBuys} SOL`);
+    console.log(`Total Fear Buys: ${enhancedStats.fearBuys} SOL`);
+    console.log(`Total Greed Sells: ${enhancedStats.greedSells} SOL`);
+    console.log(`Total Extreme Greed Sells: ${enhancedStats.extremeGreedSells} SOL`);
+    console.log(`Total Volume: ${enhancedStats.totalVolume.sol} SOL / ${enhancedStats.totalVolume.usdc} USDC ($${enhancedStats.totalVolume.usd})`);
+    console.log("------------------------------------\n");
 
     await checkBalance();
-
-    let totalPnL = position.getTotalPnL(currentPrice);
-    let unrealizedPnL = position.getUnrealizedPnL(currentPrice);
-    let realizedPnL = position.getRealizedPnL();
 
     let tradingData = {
       timestamp,
@@ -552,23 +568,21 @@ async function main() {
       usdcBalance: position.usdcBalance,
       solBalance: position.solBalance,
       portfolioValue,
-      realizedPnL: realizedPnL,
-      unrealizedPnL: unrealizedPnL,
-      totalPnL: totalPnL,
+      realizedPnL: position.getRealizedPnL(),
+      unrealizedPnL: position.getUnrealizedPnL(currentPrice),
+      totalPnL: position.getTotalPnL(currentPrice),
       averageEntryPrice: position.getAverageEntryPrice(),
       averageSellPrice: position.getAverageSellPrice()
     };
 
-    emitTradingData(tradingData); // This will now include recent trades from the server
-
+    emitTradingData(tradingData);
+    logData(timestamp, currentPrice, fearGreedIndex, sentiment, position.usdcBalance, position.solBalance, position.getRealizedPnL(), position.getUnrealizedPnL(currentPrice), position.getTotalPnL(currentPrice));
     scheduleNextRun();
   } catch (error) {
     console.error('Error during main execution:', error);
-    // Stop the progress bar if it's running
     if (progressBar) {
       progressBar.stop();
     }
-    // Reschedule the next run
     scheduleNextRun();
   }
 }

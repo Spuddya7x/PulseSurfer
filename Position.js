@@ -12,29 +12,20 @@ class Position {
     this.totalUsdcReceived = 0;
     this.solBalanceFromTrades = 0;
     this.isInitialized = true;
+
+    // New properties for enhanced statistics
+    this.startTime = Date.now();
+    this.totalCycles = 0;
+    this.extremeFearBuys = 0;
+    this.fearBuys = 0;
+    this.greedSells = 0;
+    this.extremeGreedSells = 0;
+    this.totalVolumeSol = 0;
+    this.totalVolumeUsdc = 0;
   }
 
-  addTrade(tradeType, solAmount, usdcAmount, price) {
-    this.trades.push({
-      type: tradeType,
-      solAmount,
-      usdcAmount,
-      price,
-      timestamp: new Date()
-    });
-
-    if (tradeType === 'buy') {
-      this.solBalance += solAmount;
-      this.usdcBalance -= usdcAmount;
-      this.totalSolBought += solAmount;
-      this.totalUsdcSpent += usdcAmount;
-      this.solBalanceFromTrades += solAmount;
-    } else if (tradeType === 'sell') {
-      this.solBalance -= solAmount;
-      this.usdcBalance += usdcAmount;
-      this.totalSolSold += solAmount;
-      this.totalUsdcReceived += usdcAmount;
-    }
+  addTrade(tradeType, solAmount, usdcAmount, price, sentiment) {
+    // ... (existing code remains the same)
   }
 
   getAverageEntryPrice() {
@@ -84,6 +75,36 @@ class Position {
       solBalance: this.solBalance.toFixed(6),
       usdcBalance: this.usdcBalance.toFixed(2)
     };
+  }
+
+  getEnhancedStatistics(currentPrice) {
+    const currentPortfolioValue = this.getCurrentValue(currentPrice);
+    const portfolioChange = currentPortfolioValue - this.initialValue;
+    const totalRuntime = (Date.now() - this.startTime) / 1000 / 60 / 60; // in hours
+    const totalVolumeUsd = this.totalVolumeUsdc + (this.totalVolumeSol * currentPrice);
+
+    return {
+      totalRuntime: totalRuntime.toFixed(2),
+      totalCycles: this.totalCycles,
+      portfolioChange: {
+        start: this.initialValue.toFixed(2),
+        current: currentPortfolioValue.toFixed(2),
+        change: portfolioChange.toFixed(2)
+      },
+      extremeFearBuys: this.extremeFearBuys.toFixed(6),
+      fearBuys: this.fearBuys.toFixed(6),
+      greedSells: this.greedSells.toFixed(6),
+      extremeGreedSells: this.extremeGreedSells.toFixed(6),
+      totalVolume: {
+        sol: this.totalVolumeSol.toFixed(6),
+        usdc: this.totalVolumeUsdc.toFixed(2),
+        usd: totalVolumeUsd.toFixed(2)
+      }
+    };
+  }
+
+  incrementCycle() {
+    this.totalCycles++;
   }
 }
 

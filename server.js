@@ -1,7 +1,6 @@
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
-//const path = require('path');
 const EventEmitter = require('events');
 
 const app = express();
@@ -21,6 +20,7 @@ const paramUpdateEmitter = new EventEmitter();
 let initialData = null;
 const recentTrades = [];
 const MAX_RECENT_TRADES = 7;
+
 
 let tradingParams = {
   SENTIMENT_BOUNDARIES: {
@@ -86,8 +86,8 @@ io.on('connection', (socket) => {
 
 // Function to emit trading data
 function emitTradingData(data) {
-  console.log('\nEmitting trading data');
-  console.log(data);
+  //console.log('\nEmitting trading data');
+  //console.log(data);
 
   const emitData = {
     timestamp: data.timestamp,
