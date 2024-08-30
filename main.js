@@ -249,12 +249,15 @@ function scheduleNextRun() {
   }, 1000);
 }
 
-async function fetchPrice(BASE_PRICE_URL, TOKEN, maxRetries = 5, retryDelay = 2000) {
+async function fetchPrice(BASE_PRICE_URL, TOKEN, maxRetries = 5, retryDelay = 5000) {
+  const tokenId = 'So11111111111111111111111111111111111111112';
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const response = await axios.get(`${BASE_PRICE_URL}${TOKEN.NAME}`);
-      const price = response.data.data[TOKEN.NAME].price;
-      return parseFloat(price.toFixed(TOKEN.DECIMALS));
+      console.log(`${BASE_PRICE_URL}${tokenId}`);
+      const response = await axios.get(`${BASE_PRICE_URL}${tokenId}`);
+      const price = response.data.data[tokenId].price;
+      return parseFloat(price.toFixed(TOKEN.decimals));
     } catch (error) {
       console.error(`Error fetching price (attempt ${attempt}/${maxRetries}):`, error.message);
 
@@ -500,7 +503,6 @@ function logPositionUpdate(currentPrice) {
 
 async function main() {
   try {
-    console.clear();
     position.incrementCycle();
 
     const fearGreedIndex = await fetchFearGreedIndex();
@@ -544,18 +546,21 @@ async function main() {
       console.log("No trade executed this cycle.");
     }
 
-    const portfolioValue = position.getCurrentValue(currentPrice);
     const enhancedStats = position.getEnhancedStatistics(currentPrice);
 
     console.log("\n--- Enhanced Trading Statistics ---");
     console.log(`Total Script Runtime: ${enhancedStats.totalRuntime} hours`);
     console.log(`Total Cycles: ${enhancedStats.totalCycles}`);
-    console.log(`Portfolio Change: $${enhancedStats.portfolioChange.start} -> $${enhancedStats.portfolioChange.current} (${enhancedStats.portfolioChange.change >= 0 ? '+' : ''}${enhancedStats.portfolioChange.change})`);
+    console.log(`Portfolio Value: $${enhancedStats.portfolioValue.initial} -> $${enhancedStats.portfolioValue.current} (${enhancedStats.portfolioValue.change >= 0 ? '+' : ''}${enhancedStats.portfolioValue.change}) (${enhancedStats.portfolioValue.percentageChange}%)`);
+    console.log(`SOL Price: $${enhancedStats.solPrice.initial} -> $${enhancedStats.solPrice.current} (${enhancedStats.solPrice.percentageChange}%)`);
+    console.log(`PnL: Realized: $${enhancedStats.pnl.realized}, Unrealized: $${enhancedStats.pnl.unrealized}, Total: $${enhancedStats.pnl.total}`);
     console.log(`Total Extreme Fear Buys: ${enhancedStats.extremeFearBuys} SOL`);
     console.log(`Total Fear Buys: ${enhancedStats.fearBuys} SOL`);
     console.log(`Total Greed Sells: ${enhancedStats.greedSells} SOL`);
     console.log(`Total Extreme Greed Sells: ${enhancedStats.extremeGreedSells} SOL`);
     console.log(`Total Volume: ${enhancedStats.totalVolume.sol} SOL / ${enhancedStats.totalVolume.usdc} USDC ($${enhancedStats.totalVolume.usd})`);
+    console.log(`Balances: SOL: ${enhancedStats.balances.sol.initial} -> ${enhancedStats.balances.sol.current}, USDC: ${enhancedStats.balances.usdc.initial} -> ${enhancedStats.balances.usdc.current}`);
+    console.log(`Average Prices: Entry: $${enhancedStats.averagePrices.entry}, Sell: $${enhancedStats.averagePrices.sell}`);
     console.log("------------------------------------\n");
 
     await checkBalance();
@@ -567,16 +572,16 @@ async function main() {
       sentiment,
       usdcBalance: position.usdcBalance,
       solBalance: position.solBalance,
-      portfolioValue,
-      realizedPnL: position.getRealizedPnL(),
-      unrealizedPnL: position.getUnrealizedPnL(currentPrice),
-      totalPnL: position.getTotalPnL(currentPrice),
-      averageEntryPrice: position.getAverageEntryPrice(),
-      averageSellPrice: position.getAverageSellPrice()
+      portfolioValue: parseFloat(enhancedStats.portfolioValue.current),
+      realizedPnL: parseFloat(enhancedStats.pnl.realized),
+      unrealizedPnL: parseFloat(enhancedStats.pnl.unrealized),
+      totalPnL: parseFloat(enhancedStats.pnl.total),
+      averageEntryPrice: parseFloat(enhancedStats.averagePrices.entry) || 0,
+      averageSellPrice: parseFloat(enhancedStats.averagePrices.sell) || 0
     };
 
     emitTradingData(tradingData);
-    logData(timestamp, currentPrice, fearGreedIndex, sentiment, position.usdcBalance, position.solBalance, position.getRealizedPnL(), position.getUnrealizedPnL(currentPrice), position.getTotalPnL(currentPrice));
+
     scheduleNextRun();
   } catch (error) {
     console.error('Error during main execution:', error);

@@ -4,6 +4,7 @@ class Position {
     this.usdcBalance = initialUsdcBalance;
     this.initialValue = this.solBalance * initialPrice + this.usdcBalance;
     this.initialSolBalance = initialSolBalance;
+    this.initialUsdcBalance = initialUsdcBalance;
     this.initialPrice = initialPrice;
     this.trades = [];
     this.totalSolBought = 0;
@@ -13,7 +14,7 @@ class Position {
     this.solBalanceFromTrades = 0;
     this.isInitialized = true;
 
-    // New properties for enhanced statistics
+    // Enhanced statistics
     this.startTime = Date.now();
     this.totalCycles = 0;
     this.extremeFearBuys = 0;
@@ -25,7 +26,42 @@ class Position {
   }
 
   addTrade(tradeType, solAmount, usdcAmount, price, sentiment) {
-    // ... (existing code remains the same)
+    this.trades.push({
+      type: tradeType,
+      solAmount,
+      usdcAmount,
+      price,
+      sentiment,
+      timestamp: new Date()
+    });
+
+    if (tradeType === 'buy') {
+      this.solBalance += solAmount;
+      this.usdcBalance -= usdcAmount;
+      this.totalSolBought += solAmount;
+      this.totalUsdcSpent += usdcAmount;
+      this.solBalanceFromTrades += solAmount;
+
+      if (sentiment === 'EXTREME_FEAR') {
+        this.extremeFearBuys += solAmount;
+      } else if (sentiment === 'FEAR') {
+        this.fearBuys += solAmount;
+      }
+    } else if (tradeType === 'sell') {
+      this.solBalance -= solAmount;
+      this.usdcBalance += usdcAmount;
+      this.totalSolSold += solAmount;
+      this.totalUsdcReceived += usdcAmount;
+
+      if (sentiment === 'GREED') {
+        this.greedSells += solAmount;
+      } else if (sentiment === 'EXTREME_GREED') {
+        this.extremeGreedSells += solAmount;
+      }
+    }
+
+    this.totalVolumeSol += solAmount;
+    this.totalVolumeUsdc += usdcAmount;
   }
 
   getAverageEntryPrice() {
@@ -50,31 +86,20 @@ class Position {
   }
 
   getTotalPnL(currentPrice) {
-    const currentValue = this.getCurrentValue(currentPrice);
-    return currentValue - this.initialValue;
+    return this.getRealizedPnL() + this.getUnrealizedPnL(currentPrice);
   }
 
   getCurrentValue(currentPrice) {
     return this.solBalance * currentPrice + this.usdcBalance;
   }
 
-  getPerformanceMetrics(currentPrice) {
+  getPortfolioPercentageChange(currentPrice) {
     const currentValue = this.getCurrentValue(currentPrice);
-    const totalPnL = this.getTotalPnL(currentPrice);
-    const percentageReturn = (totalPnL / this.initialValue) * 100;
-    const avgEntryPrice = this.getAverageEntryPrice();
+    return ((currentValue - this.initialValue) / this.initialValue) * 100;
+  }
 
-    return {
-      currentValue: currentValue.toFixed(2),
-      totalPnL: totalPnL.toFixed(2),
-      percentageReturn: percentageReturn.toFixed(2),
-      realizedPnL: this.getRealizedPnL().toFixed(2),
-      unrealizedPnL: this.getUnrealizedPnL(currentPrice).toFixed(2),
-      averageEntryPrice: avgEntryPrice > 0 ? avgEntryPrice.toFixed(2) : 'N/A',
-      averageSellPrice: this.getAverageSellPrice().toFixed(2),
-      solBalance: this.solBalance.toFixed(6),
-      usdcBalance: this.usdcBalance.toFixed(2)
-    };
+  getSolPricePercentageChange(currentPrice) {
+    return ((currentPrice - this.initialPrice) / this.initialPrice) * 100;
   }
 
   getEnhancedStatistics(currentPrice) {
@@ -86,10 +111,21 @@ class Position {
     return {
       totalRuntime: totalRuntime.toFixed(2),
       totalCycles: this.totalCycles,
-      portfolioChange: {
-        start: this.initialValue.toFixed(2),
+      portfolioValue: {
+        initial: this.initialValue.toFixed(2),
         current: currentPortfolioValue.toFixed(2),
-        change: portfolioChange.toFixed(2)
+        change: portfolioChange.toFixed(2),
+        percentageChange: this.getPortfolioPercentageChange(currentPrice).toFixed(2)
+      },
+      solPrice: {
+        initial: this.initialPrice.toFixed(2),
+        current: currentPrice.toFixed(2),
+        percentageChange: this.getSolPricePercentageChange(currentPrice).toFixed(2)
+      },
+      pnl: {
+        realized: this.getRealizedPnL().toFixed(2),
+        unrealized: this.getUnrealizedPnL(currentPrice).toFixed(2),
+        total: this.getTotalPnL(currentPrice).toFixed(2)
       },
       extremeFearBuys: this.extremeFearBuys.toFixed(6),
       fearBuys: this.fearBuys.toFixed(6),
@@ -99,6 +135,20 @@ class Position {
         sol: this.totalVolumeSol.toFixed(6),
         usdc: this.totalVolumeUsdc.toFixed(2),
         usd: totalVolumeUsd.toFixed(2)
+      },
+      balances: {
+        sol: {
+          initial: this.initialSolBalance.toFixed(6),
+          current: this.solBalance.toFixed(6)
+        },
+        usdc: {
+          initial: this.initialUsdcBalance.toFixed(2),
+          current: this.usdcBalance.toFixed(2)
+        }
+      },
+      averagePrices: {
+        entry: this.getAverageEntryPrice().toFixed(2),
+        sell: this.getAverageSellPrice().toFixed(2)
       }
     };
   }
