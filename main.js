@@ -257,7 +257,8 @@ async function fetchPrice(BASE_PRICE_URL, TOKEN, maxRetries = 5, retryDelay = 50
       console.log(`${BASE_PRICE_URL}${tokenId}`);
       const response = await axios.get(`${BASE_PRICE_URL}${tokenId}`);
       const price = response.data.data[tokenId].price;
-      return parseFloat(price.toFixed(TOKEN.decimals));
+      console.log(`Price fetched: $${price.toFixed(2)}`);
+      return parseFloat(price.toFixed(2));
     } catch (error) {
       console.error(`Error fetching price (attempt ${attempt}/${maxRetries}):`, error.message);
 
