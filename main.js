@@ -30,20 +30,20 @@ const SOL = {
 
 // Easily editable sentiment boundaries
 let SENTIMENT_BOUNDARIES = {
-  EXTREME_FEAR: 20,  // 0-24: Extreme Fear
-  FEAR: 40,          // 25-39: Fear
+  EXTREME_FEAR: 21,  // 0-24: Extreme Fear
+  FEAR: 31,          // 25-39: Fear
   //No Neutral Boundary - 40-59: Neutral
-  GREED: 60,         // 60-74: Greed
-  EXTREME_GREED: 80  // 75-100: Extreme Greed
+  GREED: 61,         // 60-74: Greed
+  EXTREME_GREED: 87  // 75-100: Extreme Greed
 };
 
 // Easily editable sentiment multipliers (as percentages of portfolio)
 let SENTIMENT_MULTIPLIERS = {
-  EXTREME_FEAR: 0.03, // % of portfolio
-  FEAR: 0.01,        // % of portfolio
+  EXTREME_FEAR: 0.035, // % of portfolio
+  FEAR: 0.0012,        // % of portfolio
   NEUTRAL: 0,        // No action
-  GREED: 0.01,       // % of portfolio
-  EXTREME_GREED: 0.03 // % of portfolio
+  GREED: 0.0201,       // % of portfolio
+  EXTREME_GREED: 0.0737 // % of portfolio
 };
 const slippageBps = 200; // 2% slippage
 
@@ -95,6 +95,22 @@ async function getTokenBalance(connection, walletAddress, mintAddress) {
   } catch (error) {
     console.error("Error fetching token balance:", error);
     return 0;
+  }
+}
+
+async function updatePortfolioBalances() {
+  try {
+    const solBalance = await getTokenBalance(connection, wallet.publicKey.toString(), SOL.ADDRESS);
+    const usdcBalance = await getTokenBalance(connection, wallet.publicKey.toString(), USDC.ADDRESS);
+
+    // Update the position with new balances
+    position.updateBalances(solBalance, usdcBalance);
+
+    console.log(`Updated Portfolio Balances - SOL: ${solBalance.toFixed(SOL.DECIMALS)}, USDC: ${usdcBalance.toFixed(USDC.DECIMALS)}`);
+    return { solBalance, usdcBalance };
+  } catch (error) {
+    console.error("Error updating portfolio balances:", error);
+    throw error;
   }
 }
 
@@ -289,27 +305,53 @@ function calculateTradeAmount(balance, sentiment, tokenInfo) {
 }
 
 async function getQuote(BASE_SWAP_URL, inputMint, outputMint, tradeAmountLamports, slippageBps) {
-  const quoteUrl = `${BASE_SWAP_URL}/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${tradeAmountLamports}&slippageBps=${slippageBps}`;
+  const quoteUrl = `${BASE_SWAP_URL}/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${tradeAmountLamports}&slippageBps=${slippageBps}&platformFeeBps=25`;
   const quoteResponse = await (await fetch(quoteUrl)).json();
   return quoteResponse;
 }
 
-async function getSwapTransaction(BASE_SWAP_URL, quoteResponse, walletPublicKey) {
-  const { swapTransaction } = await (
-    await fetch(`${BASE_SWAP_URL}/swap`, {
-      method: 'POST',
+async function getFeeAccountAndSwapTransaction(
+  referralAccountPubkey,
+  mint,
+  quoteResponse,
+  wallet
+) {
+  try {
+    const [feeAccount] = await PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("referral_ata"),
+        referralAccountPubkey.toBuffer(),
+        mint.toBuffer(),
+      ],
+      new PublicKey("REFER4ZgmyYx9c6He5XfaTMiGfdLwRnkV4RPp9t9iF3")
+    );
+
+    const requestBody = {
+      quoteResponse,
+      userPublicKey: wallet.publicKey.toString(),
+      wrapAndUnwrapSol: true,
+      feeAccount: feeAccount.toString(),
+    };
+
+    const response = await fetch("https://quote-api.jup.ag/v6/swap", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json'
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        quoteResponse,
-        userPublicKey: walletPublicKey,
-        wrapUnwrapSol: true
-        //feeAccount: "7WGULgEo4Veqj6sCvA3VNxGgBf3EXJd8sW2XniBda3bJ"
-      })
-    })
-  ).json();
-  return swapTransaction;
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error performing swap: ${response.statusText}`);
+    }
+
+    const { swapTransaction } = await response.json();
+    console.log("Swap transaction with fee account obtained");
+    return swapTransaction;
+  } catch (error) {
+    console.error("Failed to get fee account and swap transaction:", error);
+    return null;
+  }
 }
 
 async function executeAndConfirmTransaction(connection, transaction, wallet) {
@@ -323,7 +365,7 @@ async function executeAndConfirmTransaction(connection, transaction, wallet) {
   console.log(`Transaction sent: ${txid}`);
 
   const MAX_RETRIES = 5;
-  const RETRY_DELAY = 5000; // 5 seconds
+  const RETRY_DELAY = 2000; // 2 seconds
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
@@ -364,9 +406,7 @@ async function swapTokensWithRetry(
 
       // Fetch the latest price and balance before each attempt
       const latestPrice = await fetchPrice(BASE_PRICE_URL, SOL);
-      const balance = await getTokenBalance(connection, wallet.publicKey.toString(),
-        ["EXTREME_FEAR", "FEAR"].includes(sentiment) ? USDC.ADDRESS : SOL.ADDRESS
-      );
+      const { solBalance, usdcBalance } = await updatePortfolioBalances();
 
       // Check if we should proceed with the swap
       if (sentiment === "NEUTRAL") {
@@ -387,9 +427,9 @@ async function swapTokensWithRetry(
       const inputToken = isBuying ? USDC : SOL;
       const outputToken = isBuying ? SOL : USDC;
 
-      console.log(`Current ${inputToken.NAME} balance: ${balance}`);
+      console.log(`Current ${inputToken.NAME} balance: ${isBuying ? usdcBalance : solBalance}`);
 
-      const tradeAmountLamports = calculateTradeAmount(balance, sentiment, inputToken);
+      const tradeAmountLamports = calculateTradeAmount(isBuying ? usdcBalance : solBalance, sentiment, inputToken);
       console.log(`Attempting to swap ${(tradeAmountLamports / (10 ** inputToken.DECIMALS)).toFixed(inputToken.DECIMALS)} ${inputToken.NAME} for ${outputToken.NAME}...`);
 
       if (tradeAmountLamports <= 0) {
@@ -399,42 +439,38 @@ async function swapTokensWithRetry(
 
       // Get a new quote for each attempt
       const quoteResponse = await getQuote(BASE_SWAP_URL, inputMint, outputMint, tradeAmountLamports, slippageBps);
-      const swapTransaction = await getSwapTransaction(BASE_SWAP_URL, quoteResponse, wallet.publicKey.toString());
+
+      // Define the referral account public key
+      const referralAccountPubkey = new PublicKey("7WGULgEo4Veqj6sCvA3VNxGgBf3EXJd8sW2XniBda3bJ");
+
+      // Get the swap transaction with fee account
+      const swapTransaction = await getFeeAccountAndSwapTransaction(
+        referralAccountPubkey,
+        new PublicKey(inputMint),
+        quoteResponse,
+        wallet
+      );
+
+      if (!swapTransaction) {
+        throw new Error("Failed to get swap transaction");
+      }
 
       const swapTransactionBuf = Buffer.from(swapTransaction, 'base64');
       const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
 
       const txid = await executeAndConfirmTransaction(connection, transaction, wallet);
 
-      // Fetch the transaction details
-      const txInfo = await connection.getTransaction(txid, { maxSupportedTransactionVersion: 0 });
-
-      if (!txInfo) {
-        throw new Error('Transaction info not found');
-      }
-
-      // Parse the transaction to get the exact amounts
-      const { inputAmount, outputAmount } = parseJupiterSwapTransaction(txInfo, inputMint, outputMint);
-
-      const inputAmountUI = inputAmount / (10 ** inputToken.DECIMALS);
-      const outputAmountUI = outputAmount / (10 ** outputToken.DECIMALS);
-      const percentTraded = (inputAmountUI / balance) * 100;
+      // Immediately update portfolio balances after successful swap
+      const newBalances = await updatePortfolioBalances();
 
       console.log(`Swap successful on attempt ${attempt + 1}`);
-      if (isBuying) {
-        console.log(`Bought ${outputAmountUI.toFixed(SOL.DECIMALS)} SOL for ${inputAmountUI.toFixed(USDC.DECIMALS)} USDC at price $${latestPrice.toFixed(2)}`);
-      } else {
-        console.log(`Sold ${inputAmountUI.toFixed(SOL.DECIMALS)} SOL for ${outputAmountUI.toFixed(USDC.DECIMALS)} USDC at price $${latestPrice.toFixed(2)}`);
-      }
-      console.log(`(${percentTraded.toFixed(2)}% of ${inputToken.NAME} balance)`);
       console.log(`Transaction Details: https://solscan.io/tx/${txid}`);
 
       return {
         txid,
-        inputAmount: inputAmountUI,
-        outputAmount: outputAmountUI,
-        isBuying,
-        price: latestPrice
+        price: latestPrice,
+        oldBalances: { solBalance, usdcBalance },
+        newBalances
       };
 
     } catch (error) {
@@ -477,15 +513,18 @@ function updatePositionFromSwap(swapResult, sentiment) {
     return;
   }
 
-  const { inputAmount, outputAmount, price, isBuying } = swapResult;
+  const { price, oldBalances, newBalances } = swapResult;
 
-  if (isBuying) {
-    position.addTrade('buy', outputAmount, inputAmount, price, sentiment);
-    console.log(`Bought ${outputAmount.toFixed(SOL.DECIMALS)} SOL at $${price.toFixed(2)} for ${inputAmount.toFixed(USDC.DECIMALS)} USDC`);
-  } else {
-    position.addTrade('sell', inputAmount, outputAmount, price, sentiment);
-    console.log(`Sold ${inputAmount.toFixed(SOL.DECIMALS)} SOL at $${price.toFixed(2)} for ${outputAmount.toFixed(USDC.DECIMALS)} USDC`);
-  }
+  // Calculate the changes in balances
+  const solChange = newBalances.solBalance - oldBalances.solBalance;
+  const usdcChange = newBalances.usdcBalance - oldBalances.usdcBalance;
+
+  // Log the trade with the actual balance changes
+  position.logTrade(sentiment, price, solChange, usdcChange);
+
+  console.log(`Trade executed at $${price.toFixed(2)}`);
+  console.log(`SOL balance change: ${solChange.toFixed(SOL.DECIMALS)}`);
+  console.log(`USDC balance change: ${usdcChange.toFixed(USDC.DECIMALS)}`);
 
   logPositionUpdate(price);
 }
@@ -515,6 +554,9 @@ async function main() {
     console.log(`Fear & Greed Index: ${fearGreedIndex} - Sentiment: ${sentiment}`);
     console.log(`Current SOL Price: $${currentPrice.toFixed(2)}`);
 
+    // Update portfolio balances at the start of each cycle
+    await updatePortfolioBalances();
+
     let swapResult = null;
     let recentTrade = null;
 
@@ -530,10 +572,11 @@ async function main() {
       );
 
       if (swapResult) {
-        updatePositionFromSwap(swapResult, sentiment, currentPrice);
+        updatePositionFromSwap(swapResult, sentiment);
+        const tradeAmount = Math.abs(swapResult.newBalances.solBalance - swapResult.oldBalances.solBalance);
         recentTrade = {
-          type: swapResult.isBuying ? "Bought" : "Sold",
-          amount: swapResult.isBuying ? swapResult.outputAmount : swapResult.inputAmount,
+          type: sentiment === "EXTREME_FEAR" || sentiment === "FEAR" ? "Bought" : "Sold",
+          amount: tradeAmount,
           price: currentPrice,
           timestamp: getRecentTradeTimestamp()
         };
@@ -563,8 +606,6 @@ async function main() {
     console.log(`Balances: SOL: ${enhancedStats.balances.sol.initial} -> ${enhancedStats.balances.sol.current}, USDC: ${enhancedStats.balances.usdc.initial} -> ${enhancedStats.balances.usdc.current}`);
     console.log(`Average Prices: Entry: $${enhancedStats.averagePrices.entry}, Sell: $${enhancedStats.averagePrices.sell}`);
     console.log("------------------------------------\n");
-
-    await checkBalance();
 
     let tradingData = {
       timestamp,
