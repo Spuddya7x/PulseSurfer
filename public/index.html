@@ -244,6 +244,7 @@
             padding: 0px;
             margin-bottom: 0px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
         }
 
         #tradeList {
@@ -252,6 +253,24 @@
             margin: 0;
             max-height: 400px;
             overflow-y: auto;
+            overflow: hidden;
+        }
+
+        #tradeList li:last-child {
+            margin-bottom: 0;
+        }
+
+        .custom-tooltip {
+            position: fixed;
+            background-color: var(--solana-purple);
+            color: var(--text);
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
         }
 
         #tradeList li {
@@ -261,15 +280,25 @@
             background-color: rgba(255, 255, 255, 0.05);
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             transition: all 0.3s ease;
-        }
-
-        #tradeList li:last-child {
-            margin-bottom: 0;
+            position: relative;
+            left: 0;
         }
 
         #tradeList li:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            background-color: rgba(255, 255, 255, 0.1);
+            left: 5px;
+        }
+
+        #tradeList li a {
+            color: var(--text);
+            text-decoration: none;
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #tradeList li a:hover {
+            color: var(--solana-cyan);
         }
 
         .trade-buy {
@@ -278,11 +307,6 @@
 
         .trade-sell {
             border-left: 4px solid var(--solana-purple);
-        }
-
-        /* Add some styling for the scrollbar */
-        #tradeList::-webkit-scrollbar {
-            width: 8px;
         }
 
         #tradeList::-webkit-scrollbar-track {
@@ -304,13 +328,6 @@
                 flex-direction: row;
             }
 
-            @media (max-width: 600px) {
-                .data-item .data-value {
-                    display: block;
-                    margin-top: 5px;
-                }
-            }
-
             .chart-container {
                 width: 70%;
                 margin-bottom: 0;
@@ -324,6 +341,17 @@
             .fgi-display,
             .recent-trades {
                 width: 100%;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .data-item .data-value {
+                display: block;
+                margin-top: 5px;
+            }
+
+            .pnl-summary {
+                flex-direction: column;
             }
         }
 
@@ -341,97 +369,132 @@
             text-align: center;
         }
 
-        @media (max-width: 600px) {
-            .pnl-summary {
-                flex-direction: column;
-            }
-        }
+        #loginForm {
+    background-color: var(--card-bg);
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 0 20px rgba(153, 69, 255, 0.1);
+    max-width: 300px;
+    margin: 100px auto;
+    text-align: center;
+}
+
+#loginForm input[type="password"] {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid var(--solana-purple);
+    border-radius: 4px;
+    background-color: var(--background);
+    color: var(--text);
+    box-sizing: border-box;
+}
+
+#loginForm button {
+    width: 100%;
+    padding: 10px;
+    background-color: var(--solana-purple);
+    color: var(--text);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
     </style>
 </head>
 
 <body>
-    <div class="container">
-        <h1>PulseSurfer Fear and Greed Trader</h1>
-        <p>By SpuddyA7X</p>
-        <div class="chart-section">
-            <div class="chart-container">
-                <iframe
-                    src="https://birdeye.so/tv-widget/So11111111111111111111111111111111111111112?chain=solana&viewMode=pair&chartInterval=15&chartType=AREA&chartTimezone=Europe%2FLondon&chartLeftToolbar=hide&theme=dark&chartOverrides=mainSeriesProperties.areaStyle.linecolor%3A%239945ff"
-                    allowfullscreen></iframe>
-            </div>
-            <div class="chart-sidebar">
-                <div class="fgi-display">
-                    <h3>Fear & Greed Index</h3>
-                    <div id="fgiValue"></div>
-                    <div class="fgi-gauge-container">
-                        <div id="fgiGauge"></div>
-                        <div id="fgiPointer"></div>
-                    </div>
-                    <div id="currentSentiment"></div>
+    <div id="loginForm" style="display: none;">
+        <h1>PulseSurfer</h1>
+        <h2>Login</h2>
+        <input type="password" id="passwordInput" placeholder="Enter password">
+        <button onclick="login()">Login</button>
+    </div>
+
+    <div id="mainContent" style="display: none;">
+        <div class="container">
+            <h1>PulseSurfer Fear and Greed Trader</h1>
+            <p>By SpuddyA7X</p>
+            <div class="chart-section">
+                <div class="chart-container">
+                    <iframe
+                        src="https://birdeye.so/tv-widget/So11111111111111111111111111111111111111112?chain=solana&viewMode=pair&chartInterval=15&chartType=AREA&chartTimezone=Europe%2FLondon&chartLeftToolbar=hide&theme=dark&chartOverrides=mainSeriesProperties.areaStyle.linecolor%3A%239945ff"
+                        allowfullscreen></iframe>
                 </div>
-                <div class="recent-trades">
-                    <h3>Recent Trades</h3>
-                    <ul id="tradeList"></ul>
+                <div class="chart-sidebar">
+                    <div class="fgi-display">
+                        <h3>Fear & Greed Index</h3>
+                        <div id="fgiValue"></div>
+                        <div class="fgi-gauge-container">
+                            <div id="fgiGauge"></div>
+                            <div id="fgiPointer"></div>
+                        </div>
+                        <div id="currentSentiment"></div>
+                    </div>
+                    <div class="recent-trades">
+                        <h3>Recent Trades</h3>
+                        <ul id="tradeList"></ul>
+                    </div>
                 </div>
             </div>
-        </div>
-        <div class="grid">
-            <div class="card">
-                <h2>Trading Parameters</h2>
-                <form id="paramForm">
-                    <div class="sentiment-row">
-                        <div class="sentiment-input">
-                            <label for="extremeGreedBoundary">Extreme Greed Boundary:</label>
-                            <input type="number" id="extremeGreedBoundary" name="extremeGreedBoundary" min="0"
-                                max="100">
+            <div class="grid">
+                <div class="card">
+                    <h2>Trading Parameters</h2>
+                    <form id="paramForm">
+                        <div class="sentiment-row">
+                            <div class="sentiment-input">
+                                <label for="extremeGreedBoundary">Extreme Greed Boundary:</label>
+                                <input type="number" id="extremeGreedBoundary" name="extremeGreedBoundary" min="0"
+                                    max="100">
+                            </div>
+                            <div class="sentiment-input">
+                                <label for="extremeGreedMultiplier">Extreme Greed Multiplier:</label>
+                                <input type="number" id="extremeGreedMultiplier" name="extremeGreedMultiplier" min="0"
+                                    max="1" step="0.0001">
+                            </div>
                         </div>
-                        <div class="sentiment-input">
-                            <label for="extremeGreedMultiplier">Extreme Greed Multiplier:</label>
-                            <input type="number" id="extremeGreedMultiplier" name="extremeGreedMultiplier" min="0"
-                                max="1" step="0.0001">
+                        <div class="sentiment-row">
+                            <div class="sentiment-input">
+                                <label for="greedBoundary">Greed Boundary:</label>
+                                <input type="number" id="greedBoundary" name="greedBoundary" min="0" max="100">
+                            </div>
+                            <div class="sentiment-input">
+                                <label for="greedMultiplier">Greed Multiplier:</label>
+                                <input type="number" id="greedMultiplier" name="greedMultiplier" min="0" max="1"
+                                    step="0.0001">
+                            </div>
                         </div>
+                        <div class="sentiment-row">
+                            <div class="sentiment-input">
+                                <label for="fearBoundary">Fear Boundary:</label>
+                                <input type="number" id="fearBoundary" name="fearBoundary" min="0" max="100">
+                            </div>
+                            <div class="sentiment-input">
+                                <label for="fearMultiplier">Fear Multiplier:</label>
+                                <input type="number" id="fearMultiplier" name="fearMultiplier" min="0" max="1"
+                                    step="0.0001">
+                            </div>
+                        </div>
+                        <div class="sentiment-row">
+                            <div class="sentiment-input">
+                                <label for="extremeFearBoundary">Extreme Fear Boundary:</label>
+                                <input type="number" id="extremeFearBoundary" name="extremeFearBoundary" min="0"
+                                    max="100">
+                            </div>
+                            <div class="sentiment-input">
+                                <label for="extremeFearMultiplier">Extreme Fear Multiplier:</label>
+                                <input type="number" id="extremeFearMultiplier" name="extremeFearMultiplier" min="0"
+                                    max="1" step="0.0001">
+                            </div>
+                        </div>
+                        <button type="submit">Update Parameters</button>
+                    </form>
+                    <div id="updateFeedback"></div>
+                </div>
+                <div class="card">
+                    <h2>Current Trading Data</h2>
+                    <div id="tradingData" class="trading-data-grid">
+                        <!-- Trading data will be inserted here by JavaScript -->
                     </div>
-                    <div class="sentiment-row">
-                        <div class="sentiment-input">
-                            <label for="greedBoundary">Greed Boundary:</label>
-                            <input type="number" id="greedBoundary" name="greedBoundary" min="0" max="100">
-                        </div>
-                        <div class="sentiment-input">
-                            <label for="greedMultiplier">Greed Multiplier:</label>
-                            <input type="number" id="greedMultiplier" name="greedMultiplier" min="0" max="1"
-                                step="0.0001">
-                        </div>
-                    </div>
-                    <div class="sentiment-row">
-                        <div class="sentiment-input">
-                            <label for="fearBoundary">Fear Boundary:</label>
-                            <input type="number" id="fearBoundary" name="fearBoundary" min="0" max="100">
-                        </div>
-                        <div class="sentiment-input">
-                            <label for="fearMultiplier">Fear Multiplier:</label>
-                            <input type="number" id="fearMultiplier" name="fearMultiplier" min="0" max="1"
-                                step="0.0001">
-                        </div>
-                    </div>
-                    <div class="sentiment-row">
-                        <div class="sentiment-input">
-                            <label for="extremeFearBoundary">Extreme Fear Boundary:</label>
-                            <input type="number" id="extremeFearBoundary" name="extremeFearBoundary" min="0" max="100">
-                        </div>
-                        <div class="sentiment-input">
-                            <label for="extremeFearMultiplier">Extreme Fear Multiplier:</label>
-                            <input type="number" id="extremeFearMultiplier" name="extremeFearMultiplier" min="0" max="1"
-                                step="0.0001">
-                        </div>
-                    </div>
-                    <button type="submit">Update Parameters</button>
-                </form>
-                <div id="updateFeedback"></div>
-            </div>
-            <div class="card">
-                <h2>Current Trading Data</h2>
-                <div id="tradingData" class="trading-data-grid">
-                    <!-- Trading data will be inserted here by JavaScript -->
                 </div>
             </div>
         </div>
@@ -439,7 +502,10 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        const socket = io();
+        const socket = io({
+            transports: ['websocket'],
+            upgrade: false
+        });
         const tradingDataElement = document.getElementById('tradingData');
         const paramForm = document.getElementById('paramForm');
         const feedbackElement = document.getElementById('updateFeedback');
@@ -455,71 +521,114 @@
             EXTREME_GREED: 80
         };
 
-        // Add a loading indicator
-        tradingDataElement.innerHTML = '<div class="loading">Loading trading data...</div>';
+        function showLoginForm() {
+            document.getElementById('loginForm').style.display = 'block';
+            document.getElementById('mainContent').style.display = 'none';
+        }
+
+        function showMainContent() {
+            document.getElementById('loginForm').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'block';
+        }
+
+        function login() {
+            const password = document.getElementById('passwordInput').value;
+            fetch('/api/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ password }),
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showMainContent();
+                        fetchInitialData();
+                    } else {
+                        alert('Invalid password');
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        function authenticatedFetch(url, options = {}) {
+            return fetch(url, options)
+                .then(response => {
+                    if (response.status === 401) {
+                        showLoginForm();
+                        throw new Error('Authentication required');
+                    }
+                    return response;
+                });
+        }
+
+        function createTooltip() {
+                const tooltip = document.createElement('div');
+                tooltip.className = 'custom-tooltip';
+                document.body.appendChild(tooltip);
+                return tooltip;
+            }
+        const tooltip = createTooltip();
 
         function updateTradingData(data) {
-                tradingDataElement.innerHTML = `
-        <div class="data-item">
-            <span class="data-label">Timestamp:</span>
-            <span class="data-value">${data.timestamp || 'N/A'}</span>
-        </div>
-        <div class="data-item">
-            <span class="data-label">PNL Summary:</span>
-            <div class="data-value pnl-summary" style="display: flex; justify-content: space-between; gap: 10px;">
-                <span style="flex: 1; padding: 5px; border: 1px solid var(--solana-purple); border-radius: 4px; text-align: center;">
-                    Realized: $${data.realizedPnL || '0.00000'}
-                </span>
-                <span style="flex: 1; padding: 5px; border: 1px solid var(--solana-purple); border-radius: 4px; text-align: center;">
-                    Avg Buy: $${data.averageEntryPrice || 'N/A'}
-                </span>
-                <span style="flex: 1; padding: 5px; border: 1px solid var(--solana-purple); border-radius: 4px; text-align: center;">
-                    Avg Sell: $${data.averageSellPrice || 'N/A'}
-                </span>
-            </div>
-        </div>
-        <div class="data-item">
-            <span class="data-label">Total P&L:</span>
-            <span class="data-value highlight">$${data.totalPnL || '0.00000'}</span>
-        </div>
-        <div class="data-item">
-            <span class="data-label">Unrealized P&L:</span>
-            <span class="data-value">$${data.unrealizedPnL || '0.00000'}</span>
-        </div>
-        <div class="data-item">
-            <span class="data-label">Current SOL Price:</span>
-            <span class="data-value">$${data.price || 'N/A'}</span>
-        </div>
-        <div class="data-item">
-            <span class="data-label">Total Portfolio Balance:</span>
-            <span class="data-value">$${data.portfolioValue || 'N/A'}</span>
-        </div>
-        <div class="data-item">
-            <span class="data-label">User SOL Balance:</span>
-            <span class="data-value">${data.solBalance || 'N/A'} SOL</span>
-        </div>
-        <div class="data-item">
-            <span class="data-label">User USDC Balance:</span>
-            <span class="data-value">${data.usdcBalance || 'N/A'} USDC</span>
-        </div>
-        <div class="data-item">
-            <span class="data-label">Fear & Greed Index:</span>
-            <span class="data-value">${data.fearGreedIndex || 'N/A'} - ${data.sentiment || 'N/A'}</span>
-        </div>
-    `;
+            tradingDataElement.innerHTML = `
+                <div class="data-item">
+                    <span class="data-label">Timestamp:</span>
+                    <span class="data-value">${data.timestamp || 'N/A'}</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">PNL Summary:</span>
+                    <div class="data-value pnl-summary" style="display: flex; justify-content: space-between; gap: 10px;">
+                        <span style="flex: 1; padding: 5px; border: 1px solid var(--solana-purple); border-radius: 4px; text-align: center;">
+                            Realized: $${data.realizedPnL || '0.00000'}
+                        </span>
+                        <span style="flex: 1; padding: 5px; border: 1px solid var(--solana-purple); border-radius: 4px; text-align: center;">
+                            Avg Buy: $${data.averageEntryPrice || 'N/A'}
+                        </span>
+                        <span style="flex: 1; padding: 5px; border: 1px solid var(--solana-purple); border-radius: 4px; text-align: center;">
+                            Avg Sell: $${data.averageSellPrice || 'N/A'}
+                        </span>
+                    </div>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">Total P&L:</span>
+                    <span class="data-value highlight">$${data.totalPnL || '0.00000'}</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">Unrealized P&L:</span>
+                    <span class="data-value">$${data.unrealizedPnL || '0.00000'}</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">Current SOL Price:</span>
+                    <span class="data-value">$${data.price || 'N/A'}</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">Total Portfolio Balance:</span>
+                    <span class="data-value">$${data.portfolioValue || 'N/A'}</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">User SOL Balance:</span>
+                    <span class="data-value">${data.solBalance || 'N/A'} SOL</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">User USDC Balance:</span>
+                    <span class="data-value">${data.usdcBalance || 'N/A'} USDC</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">Fear & Greed Index:</span>
+                    <span class="data-value">${data.fearGreedIndex || 'N/A'} - ${data.sentiment || 'N/A'}</span>
+                </div>
+            `;
 
             updateFGI(data.fearGreedIndex);
         }
 
         function updateFGI(value) {
-            const fgiValueElement = document.getElementById('fgiValue');
-            const fgiPointerElement = document.getElementById('fgiPointer');
-
             fgiValueElement.textContent = value;
-            const position = Math.max(0, Math.min(100, value)); // Ensure value is between 0 and 100
+            const position = Math.max(0, Math.min(100, value));
             fgiPointerElement.style.left = `${position}%`;
 
-            // Determine the current sentiment
             let currentSentiment;
             if (value < sentimentBoundaries.EXTREME_FEAR) {
                 currentSentiment = 'Extreme Fear';
@@ -533,7 +642,6 @@
                 currentSentiment = 'Extreme Greed';
             }
 
-            // Update the sentiment text
             const currentSentimentElement = document.getElementById('currentSentiment');
             if (currentSentimentElement) {
                 currentSentimentElement.textContent = currentSentiment;
@@ -542,21 +650,16 @@
 
         function updateSentimentBoundaries(newBoundaries) {
             sentimentBoundaries = { ...newBoundaries };
-            // Refresh the FGI display with the current value
             let currentFGI = document.getElementById('fgiValue').textContent;
             updateFGI(parseInt(currentFGI));
         }
 
-        // Update the existing updateFormValues function
         function updateFormValues(params) {
             if (params.SENTIMENT_BOUNDARIES) {
                 document.getElementById('extremeFearBoundary').value = params.SENTIMENT_BOUNDARIES.EXTREME_FEAR;
                 document.getElementById('fearBoundary').value = params.SENTIMENT_BOUNDARIES.FEAR;
                 document.getElementById('greedBoundary').value = params.SENTIMENT_BOUNDARIES.GREED;
                 document.getElementById('extremeGreedBoundary').value = params.SENTIMENT_BOUNDARIES.EXTREME_GREED;
-
-                // Update the sentiment boundaries and refresh the FGI display
-                updateSentimentBoundaries(params.SENTIMENT_BOUNDARIES);
             }
             if (params.SENTIMENT_MULTIPLIERS) {
                 document.getElementById('extremeFearMultiplier').value = params.SENTIMENT_MULTIPLIERS.EXTREME_FEAR;
@@ -564,40 +667,96 @@
                 document.getElementById('greedMultiplier').value = params.SENTIMENT_MULTIPLIERS.GREED;
                 document.getElementById('extremeGreedMultiplier').value = params.SENTIMENT_MULTIPLIERS.EXTREME_GREED;
             }
-            updateSentimentBoundaries(params);
+            updateSentimentBoundaries(params.SENTIMENT_BOUNDARIES);
         }
 
-        function addTrade(trade) {
-            if (!trade) return; // Don't add if there's no trade data
+        function updateTradeList(trades) {
+                console.log('Updating trade list with:', trades);
+                tradeListElement.innerHTML = '';
 
-            const tradeItem = document.createElement('li');
-            const tradeDate = new Date(trade.timestamp);
-            const formattedTime = tradeDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-            const action = trade.type;
-            const amount = trade.amount.toFixed(6);
-            const price = trade.price.toFixed(2);
-
-            tradeItem.textContent = `${formattedTime}: ${action} ${amount} SOL at $${price}`;
-            tradeItem.classList.add(action.toLowerCase() === 'bought' ? 'trade-buy' : 'trade-sell');
-
-            tradeListElement.appendChild(tradeItem, tradeListElement.firstChild);
-            if (tradeListElement.children.length > 10) {
-                tradeListElement.removeChild(tradeListElement.lastChild);
+                if (!trades || trades.length === 0) {
+                    console.log('No trades available, adding placeholder');
+                    const placeholderItem = document.createElement('li');
+                    placeholderItem.textContent = "No trades yet - check back soon!";
+                    placeholderItem.classList.add('trade-placeholder');
+                    tradeListElement.appendChild(placeholderItem);
+                } else {
+                    console.log('Adding trades to the list');
+                    trades.forEach(trade => addTrade(trade));
+                }
             }
-        }
+
+            function addTrade(trade) {
+                    console.log('Adding trade:', trade);
+
+                    if (!trade) {
+                        console.log('Trade object is null or undefined');
+                        return;
+                    }
+
+                    const placeholder = tradeListElement.querySelector('.trade-placeholder');
+                    if (placeholder) {
+                        tradeListElement.removeChild(placeholder);
+                    }
+
+                    const tradeItem = document.createElement('li');
+                    const tradeDate = new Date(trade.timestamp);
+                    const formattedTime = tradeDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+                    const action = trade.type;
+                    const amount = parseFloat(trade.amount).toFixed(6);
+                    const price = parseFloat(trade.price).toFixed(2);
+                    const unit = 'SOL';
+
+                    const tradeContent = `${formattedTime}: ${action} ${amount} ${unit} at $${price}`;
+
+                    console.log('Trade content:', tradeContent);
+
+                    if (trade.txUrl) {
+                        console.log('Creating clickable trade entry with URL:', trade.txUrl);
+                        const tradeLink = document.createElement('a');
+                        tradeLink.href = trade.txUrl;
+                        tradeLink.target = "_blank";
+                        tradeLink.textContent = tradeContent;
+
+                        // Add event listeners for tooltip
+                        tradeLink.addEventListener('mousemove', (e) => {
+                            tooltip.style.opacity = '1';
+                            tooltip.textContent = 'See on Solscan';
+                            tooltip.style.left = (e.pageX + 10) + 'px';
+                            tooltip.style.top = (e.pageY + 10) + 'px';
+                        });
+                        tradeLink.addEventListener('mouseout', () => {
+                            tooltip.style.opacity = '0';
+                        });
+
+                        tradeItem.appendChild(tradeLink);
+                    } else {
+                        console.log('No txUrl provided, creating text-only trade entry');
+                        tradeItem.textContent = tradeContent;
+                    }
+
+                    tradeItem.classList.add(action.toLowerCase() === 'bought' ? 'trade-buy' : 'trade-sell');
+
+                    tradeListElement.insertBefore(tradeItem, tradeListElement.firstChild);
+                    if (tradeListElement.children.length > 10) {
+                        tradeListElement.removeChild(tradeListElement.lastChild);
+                    }
+
+                    console.log('Trade added to list');
+                }
 
         function fetchRecentTrades() {
-            fetch('/api/recent-trades')
-                .then(response => response.json())
-                .then(trades => {
-                    tradeListElement.innerHTML = ''; // Clear existing trades
-                    trades.forEach(trade => addTrade(trade));
-                })
-                .catch(error => console.error('Error fetching recent trades:', error));
-        }
+                authenticatedFetch('/api/recent-trades')
+                    .then(response => response.json())
+                    .then(trades => {
+                        updateTradeList(trades);
+                    })
+                    .catch(error => console.error('Error fetching recent trades:', error));
+            }
+
 
         function fetchInitialData() {
-            fetch('/api/initial-data')
+            authenticatedFetch('/api/initial-data')
                 .then(response => {
                     if (!response.ok) {
                         throw new Error('Initial data not yet available');
@@ -606,7 +765,7 @@
                 })
                 .then(data => {
                     updateTradingData(data);
-                    return fetch('/api/params');
+                    return authenticatedFetch('/api/params');
                 })
                 .then(response => response.json())
                 .then(data => {
@@ -614,93 +773,105 @@
                 })
                 .catch(error => {
                     console.error('Error fetching initial data:', error);
-                    showFeedback('Retrying in 5 seconds...', 'info');
-                    setTimeout(fetchInitialData, 5000);
+                    if (error.message !== 'Authentication required') {
+                        showFeedback('Retrying in 5 seconds...', 'info');
+                        setTimeout(fetchInitialData, 5000);
+                    }
                 });
         }
 
-        // Start fetching initial data
-        fetchInitialData();
-
-        // Listen for trading updates
-        socket.on('tradingUpdate', (data) => {
-            updateTradingData(data);
-            console.log('Received trading update:', data);
-            if (data.recentTrades) {
-                tradeListElement.innerHTML = ''; // Clear existing trades
-                data.recentTrades.forEach(trade => addTrade(trade));
-            }
-        });
-
-        socket.on('paramsUpdated', (params) => {
-            console.log('Parameters updated:', params);
-            updateFormValues(params);
-        });
-
-        paramForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const formData = new FormData(paramForm);
-            const params = {
-                SENTIMENT_BOUNDARIES: {
-                    EXTREME_FEAR: parseInt(formData.get('extremeFearBoundary')),
-                    FEAR: parseInt(formData.get('fearBoundary')),
-                    GREED: parseInt(formData.get('greedBoundary')),
-                    EXTREME_GREED: parseInt(formData.get('extremeGreedBoundary'))
-                },
-                SENTIMENT_MULTIPLIERS: {
-                    EXTREME_FEAR: parseFloat(formData.get('extremeFearMultiplier')),
-                    FEAR: parseFloat(formData.get('fearMultiplier')),
-                    GREED: parseFloat(formData.get('greedMultiplier')),
-                    EXTREME_GREED: parseFloat(formData.get('extremeGreedMultiplier'))
-                }
-            };
-
-            fetch('/api/params', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(params),
-            })
-                .then(response => response.json())
-                .then(data => {
-                    console.log('Server response:', data);
-                    showFeedback('Parameters sent to server. Waiting for confirmation...', 'info');
+        // Initial check
+            authenticatedFetch('/api/initial-data')
+                .then(() => {
+                    showMainContent();
+                    fetchInitialData();
                 })
-                .catch((error) => {
-                    console.error('Error:', error);
-                    showFeedback('Error updating parameters. Please try again.', 'error');
+                .catch(() => showLoginForm());
+
+            socket.on('connect', () => {
+                console.log('Connected to WebSocket');
+                showFeedback('Connected to server', 'success');
+            });
+
+            socket.on('disconnect', () => {
+                console.log('Disconnected from WebSocket');
+                showFeedback('Disconnected from server', 'error');
+            });
+
+            socket.on('tradingUpdate', (data) => {
+                    updateTradingData(data);
+                    console.log('Received trading update:', data);
+                    if (data.recentTrades && data.recentTrades.length > 0) {
+                        const mostRecentTrade = data.recentTrades[0];
+                        console.log('Most recent trade:', mostRecentTrade);
+
+                        // Create a new trade object with the txUrl from the main data object
+                        const tradeToAdd = {
+                            ...mostRecentTrade,
+                            txUrl: data.txUrl // Add the txUrl from the main data object
+                        };
+
+                        console.log('Trade to add:', tradeToAdd);
+                        addTrade(tradeToAdd);
+                    } else {
+                        console.log('No recent trades in the update');
+                    }
                 });
-        });
 
-        function updateFormValues(params) {
-            if (params.SENTIMENT_BOUNDARIES) {
-                document.getElementById('extremeFearBoundary').value = params.SENTIMENT_BOUNDARIES.EXTREME_FEAR;
-                document.getElementById('fearBoundary').value = params.SENTIMENT_BOUNDARIES.FEAR;
-                document.getElementById('greedBoundary').value = params.SENTIMENT_BOUNDARIES.GREED;
-                document.getElementById('extremeGreedBoundary').value = params.SENTIMENT_BOUNDARIES.EXTREME_GREED;
+            socket.on('paramsUpdated', (params) => {
+                console.log('Parameters updated:', params);
+                updateFormValues(params);
+            });
+
+            paramForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const formData = new FormData(paramForm);
+                const params = {
+                    SENTIMENT_BOUNDARIES: {
+                        EXTREME_FEAR: parseInt(formData.get('extremeFearBoundary')),
+                        FEAR: parseInt(formData.get('fearBoundary')),
+                        GREED: parseInt(formData.get('greedBoundary')),
+                        EXTREME_GREED: parseInt(formData.get('extremeGreedBoundary'))
+                    },
+                    SENTIMENT_MULTIPLIERS: {
+                        EXTREME_FEAR: parseFloat(formData.get('extremeFearMultiplier')),
+                        FEAR: parseFloat(formData.get('fearMultiplier')),
+                        GREED: parseFloat(formData.get('greedMultiplier')),
+                        EXTREME_GREED: parseFloat(formData.get('extremeGreedMultiplier'))
+                    }
+                };
+
+                authenticatedFetch('/api/params', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(params),
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('Server response:', data);
+                        showFeedback('Parameters updated successfully.', 'success');
+                    })
+                    .catch((error) => {
+                        console.error('Error:', error);
+                        showFeedback('Error updating parameters. Please try again.', 'error');
+                    });
+            });
+
+            document.addEventListener('DOMContentLoaded', () => {
+                fetchRecentTrades();
+            });
+
+            function showFeedback(message, type) {
+                feedbackElement.textContent = message;
+                feedbackElement.className = type;
+                setTimeout(() => {
+                    feedbackElement.textContent = '';
+                    feedbackElement.className = '';
+                }, 5000);
             }
-            if (params.SENTIMENT_MULTIPLIERS) {
-                document.getElementById('extremeFearMultiplier').value = params.SENTIMENT_MULTIPLIERS.EXTREME_FEAR;
-                document.getElementById('fearMultiplier').value = params.SENTIMENT_MULTIPLIERS.FEAR;
-                document.getElementById('greedMultiplier').value = params.SENTIMENT_MULTIPLIERS.GREED;
-                document.getElementById('extremeGreedMultiplier').value = params.SENTIMENT_MULTIPLIERS.EXTREME_GREED;
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            fetchRecentTrades();
-        });
-
-        function showFeedback(message, type) {
-            feedbackElement.textContent = message;
-            feedbackElement.className = type;
-            setTimeout(() => {
-                feedbackElement.textContent = '';
-                feedbackElement.className = '';
-            }, 5000);
-        }
-    </script>
-</body>
-
-</html>
+        </script>
+    </body>
+    
+    </html>

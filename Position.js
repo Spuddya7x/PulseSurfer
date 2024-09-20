@@ -10,16 +10,14 @@ class Position {
     this.isInitialized = true;
 
     // Track traded amounts separately
-    this.tradedSolBalance = 0;
-    this.tradedUsdcBalance = 0;
+    this.totalSolBought = 0;
+    this.totalUsdcSpent = 0;
+    this.totalSolSold = 0;
+    this.totalUsdcReceived = 0;
 
     // Enhanced statistics
     this.startTime = Date.now();
     this.totalCycles = 0;
-    this.extremeFearBuys = 0;
-    this.fearBuys = 0;
-    this.greedSells = 0;
-    this.extremeGreedSells = 0;
     this.totalVolumeSol = 0;
     this.totalVolumeUsdc = 0;
   }
@@ -31,65 +29,47 @@ class Position {
 
   logTrade(sentiment, price, solChange, usdcChange) {
     const tradeType = solChange > 0 ? 'buy' : 'sell';
+    const solAmount = Math.abs(solChange);
+    const usdcAmount = Math.abs(usdcChange);
 
     this.trades.push({
       type: tradeType,
-      solAmount: Math.abs(solChange),
-      usdcAmount: Math.abs(usdcChange),
+      solAmount,
+      usdcAmount,
       price,
       sentiment,
       timestamp: new Date()
     });
 
-    // Update traded balances
-    this.tradedSolBalance += solChange;
-    this.tradedUsdcBalance -= usdcChange;
-
+    // Update traded amounts
     if (tradeType === 'buy') {
-      if (sentiment === 'EXTREME_FEAR') {
-        this.extremeFearBuys += Math.abs(solChange);
-      } else if (sentiment === 'FEAR') {
-        this.fearBuys += Math.abs(solChange);
-      }
-    } else if (tradeType === 'sell') {
-      if (sentiment === 'GREED') {
-        this.greedSells += Math.abs(solChange);
-      } else if (sentiment === 'EXTREME_GREED') {
-        this.extremeGreedSells += Math.abs(solChange);
-      }
+      this.totalSolBought += solAmount;
+      this.totalUsdcSpent += usdcAmount;
+    } else {
+      this.totalSolSold += solAmount;
+      this.totalUsdcReceived += usdcAmount;
     }
 
-    this.totalVolumeSol += Math.abs(solChange);
-    this.totalVolumeUsdc += Math.abs(usdcChange);
+    // Update total volume
+    this.totalVolumeSol += solAmount;
+    this.totalVolumeUsdc += usdcAmount;
   }
 
   getAverageEntryPrice() {
-    const buyTrades = this.trades.filter(trade => trade.type === 'buy');
-    const totalSolBought = buyTrades.reduce((sum, trade) => sum + trade.solAmount, 0);
-    const totalUsdcSpent = buyTrades.reduce((sum, trade) => sum + trade.usdcAmount, 0);
-    return totalSolBought > 0 ? totalUsdcSpent / totalSolBought : 0;
+    return this.totalSolBought > 0 ? this.totalUsdcSpent / this.totalSolBought : 0;
   }
 
   getAverageSellPrice() {
-    const sellTrades = this.trades.filter(trade => trade.type === 'sell');
-    const totalSolSold = sellTrades.reduce((sum, trade) => sum + trade.solAmount, 0);
-    const totalUsdcReceived = sellTrades.reduce((sum, trade) => sum + trade.usdcAmount, 0);
-    return totalSolSold > 0 ? totalUsdcReceived / totalSolSold : 0;
+    return this.totalSolSold > 0 ? this.totalUsdcReceived / this.totalSolSold : 0;
   }
 
   getRealizedPnL() {
-    return this.trades.reduce((pnl, trade) => {
-      if (trade.type === 'sell') {
-        const avgEntryPrice = this.getAverageEntryPrice();
-        return pnl + (trade.usdcAmount - (avgEntryPrice * trade.solAmount));
-      }
-      return pnl;
-    }, 0);
+    return this.totalUsdcReceived - this.totalUsdcSpent;
   }
 
   getUnrealizedPnL(currentPrice) {
-    const avgEntryPrice = this.getAverageEntryPrice();
-    return (currentPrice - avgEntryPrice) * this.tradedSolBalance;
+    const currentSolValue = (this.totalSolBought - this.totalSolSold) * currentPrice;
+    return currentSolValue - (this.totalUsdcSpent - this.totalUsdcReceived);
   }
 
   getTotalPnL(currentPrice) {
@@ -98,10 +78,6 @@ class Position {
 
   getCurrentValue(currentPrice) {
     return this.solBalance * currentPrice + this.usdcBalance;
-  }
-
-  getTradedValue(currentPrice) {
-    return this.tradedSolBalance * currentPrice + this.tradedUsdcBalance;
   }
 
   getPortfolioPercentageChange(currentPrice) {
@@ -138,10 +114,6 @@ class Position {
         unrealized: this.getUnrealizedPnL(currentPrice).toFixed(2),
         total: this.getTotalPnL(currentPrice).toFixed(2)
       },
-      extremeFearBuys: this.extremeFearBuys.toFixed(6),
-      fearBuys: this.fearBuys.toFixed(6),
-      greedSells: this.greedSells.toFixed(6),
-      extremeGreedSells: this.extremeGreedSells.toFixed(6),
       totalVolume: {
         sol: this.totalVolumeSol.toFixed(6),
         usdc: this.totalVolumeUsdc.toFixed(2),
@@ -151,19 +123,19 @@ class Position {
         sol: {
           initial: this.initialSolBalance.toFixed(6),
           current: this.solBalance.toFixed(6),
-          traded: this.tradedSolBalance.toFixed(6)
+          traded: (this.totalSolBought - this.totalSolSold).toFixed(6)
         },
         usdc: {
           initial: this.initialUsdcBalance.toFixed(2),
           current: this.usdcBalance.toFixed(2),
-          traded: this.tradedUsdcBalance.toFixed(2)
+          traded: (this.totalUsdcSpent - this.totalUsdcReceived).toFixed(2)
         }
       },
       averagePrices: {
         entry: this.getAverageEntryPrice().toFixed(2),
         sell: this.getAverageSellPrice().toFixed(2)
       },
-      tradedValue: this.getTradedValue(currentPrice).toFixed(2)
+      tradedValue: (this.totalUsdcSpent + this.totalUsdcReceived).toFixed(2)
     };
   }
 

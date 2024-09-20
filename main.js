@@ -1,4 +1,3 @@
-const { server, paramUpdateEmitter, setInitialData, addRecentTrade, emitTradingData } = require('./server');
 const Position = require('./Position');
 const bs58 = require('bs58');
 const dotenv = require('dotenv');
@@ -12,7 +11,30 @@ const { Wallet } = require('@project-serum/anchor');
 const fetch = require('cross-fetch');
 
 // Load environment variables
+function setupEnvFile() {
+  const envPath = '.env';
+
+  if (!fs.existsSync(envPath)) {
+    console.log('.env file not found. Creating a new one...');
+
+    const envContent = `PRIVATE_KEY=
+RPC_URL=
+ADMIN_PASSWORD=
+PORT=3000
+`;
+
+    fs.writeFileSync(envPath, envContent);
+    console.log('.env file created successfully. Please fill in your details.');
+    process.exit(0);
+  } else {
+    console.log('.env file already exists.');
+  }
+}
+
+setupEnvFile();
 dotenv.config();
+//Start server after .env control
+const { server, paramUpdateEmitter, setInitialData, addRecentTrade, emitTradingData, readSettings } = require('./server');
 
 // Constants
 const USDC = {
@@ -28,26 +50,8 @@ const SOL = {
   FULL_NAME: "solana"
 };
 
-// Easily editable sentiment boundaries
-let SENTIMENT_BOUNDARIES = {
-  EXTREME_FEAR: 21,  // 0-24: Extreme Fear
-  FEAR: 31,          // 25-39: Fear
-  //No Neutral Boundary - 40-59: Neutral
-  GREED: 61,         // 60-74: Greed
-  EXTREME_GREED: 87  // 75-100: Extreme Greed
-};
-
-// Easily editable sentiment multipliers (as percentages of portfolio)
-let SENTIMENT_MULTIPLIERS = {
-  EXTREME_FEAR: 0.035, // % of portfolio
-  FEAR: 0.0012,        // % of portfolio
-  NEUTRAL: 0,        // No action
-  GREED: 0.0201,       // % of portfolio
-  EXTREME_GREED: 0.0737 // % of portfolio
-};
-const slippageBps = 200; // 2% slippage
-
-let INTERVAL = 15 * 60 * 1000; // 15 minutes
+let { SENTIMENT_BOUNDARIES, SENTIMENT_MULTIPLIERS, INTERVAL } = readSettings();
+const slippageBps = 200; // 5% slippage
 
 const BASE_PRICE_URL = "https://price.jup.ag/v6/price?ids=";
 const BASE_SWAP_URL = "https://quote-api.jup.ag/v6";
@@ -61,10 +65,6 @@ let RETRY_DELAY = 2000; // 2 seconds
 let startTime = Date.now();
 let totalCycles = 0;
 let startingPortfolioValue = 0;
-let totalExtremeFearBuys = 0;
-let totalFearBuys = 0;
-let totalGreedSells = 0;
-let totalExtremeGreedSells = 0;
 let totalVolumeSol = 0;
 let totalVolumeUsdc = 0;
 
@@ -106,7 +106,7 @@ async function updatePortfolioBalances() {
     // Update the position with new balances
     position.updateBalances(solBalance, usdcBalance);
 
-    console.log(`Updated Portfolio Balances - SOL: ${solBalance.toFixed(SOL.DECIMALS)}, USDC: ${usdcBalance.toFixed(USDC.DECIMALS)}`);
+    //console.log(`Updated Portfolio Balances - SOL: ${solBalance.toFixed(SOL.DECIMALS)}, USDC: ${usdcBalance.toFixed(USDC.DECIMALS)}`);
     return { solBalance, usdcBalance };
   } catch (error) {
     console.error("Error updating portfolio balances:", error);
@@ -158,16 +158,6 @@ async function checkBalance() {
 function initializeCSV() {
   const headers = 'Timestamp,Price,FGIndex,Sentiment,DollarBalance,TokenBalance,PortfolioValue,CostBasis,RealizedPnL,AverageBuyPrice,AverageSellPrice\n';
   fs.writeFileSync('trading_data.csv', headers);
-}
-
-function logData(timestamp, price, fearGreedIndex, sentiment, usdcBalance, tokenBalance, realizedPnL) {
-  const portfolioValue = usdcBalance + tokenBalance * price;
-  const averageBuyPrice = position.getAverageBuyPrice().toFixed(SOL.DECIMALS);
-  const averageSellPrice = position.getAverageSellPrice().toFixed(SOL.DECIMALS);
-  const data = `${timestamp},${price},${fearGreedIndex},${sentiment},${usdcBalance},${tokenBalance},${portfolioValue},${averageBuyPrice},${realizedPnL},${averageBuyPrice},${averageSellPrice}\n`;
-  fs.appendFileSync('trading_data.csv', data);
-
-  console.log(`FGI: ${fearGreedIndex} - ${sentiment}, Price: $${price}, Portfolio: $${portfolioValue.toFixed(2)}`);
 }
 
 async function fetchFearGreedIndex() {
@@ -270,10 +260,10 @@ async function fetchPrice(BASE_PRICE_URL, TOKEN, maxRetries = 5, retryDelay = 50
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`${BASE_PRICE_URL}${tokenId}`);
+      //console.log(`${BASE_PRICE_URL}${tokenId}`);
       const response = await axios.get(`${BASE_PRICE_URL}${tokenId}`);
       const price = response.data.data[tokenId].price;
-      console.log(`Price fetched: $${price.toFixed(2)}`);
+      //console.log(`Price fetched: $${price.toFixed(2)}`);
       return parseFloat(price.toFixed(2));
     } catch (error) {
       console.error(`Error fetching price (attempt ${attempt}/${maxRetries}):`, error.message);
@@ -305,9 +295,31 @@ function calculateTradeAmount(balance, sentiment, tokenInfo) {
 }
 
 async function getQuote(BASE_SWAP_URL, inputMint, outputMint, tradeAmountLamports, slippageBps) {
-  const quoteUrl = `${BASE_SWAP_URL}/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${tradeAmountLamports}&slippageBps=${slippageBps}&platformFeeBps=25`;
-  const quoteResponse = await (await fetch(quoteUrl)).json();
-  return quoteResponse;
+  const params = new URLSearchParams({
+    inputMint: inputMint,
+    outputMint: outputMint,
+    amount: tradeAmountLamports.toString(),
+    slippageBps: slippageBps.toString(),
+    platformFeeBps: '25',
+    maxAutoSlippageBps: '500', // Maximum 5% slippage
+    autoSlippage: 'true'
+  });
+
+  const quoteUrl = `${BASE_SWAP_URL}/quote?${params.toString()}`;
+  //console.log(`Fetching quote from: ${quoteUrl}`);
+
+  try {
+    const response = await fetch(quoteUrl);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const quoteResponse = await response.json();
+    //console.log(`Quote received:`, quoteResponse);
+    return quoteResponse;
+  } catch (error) {
+    console.error('Error fetching quote:', error);
+    throw error;
+  }
 }
 
 async function getFeeAccountAndSwapTransaction(
@@ -346,7 +358,7 @@ async function getFeeAccountAndSwapTransaction(
     }
 
     const { swapTransaction } = await response.json();
-    console.log("Swap transaction with fee account obtained");
+    //console.log("Swap transaction with fee account obtained");
     return swapTransaction;
   } catch (error) {
     console.error("Failed to get fee account and swap transaction:", error);
@@ -357,38 +369,30 @@ async function getFeeAccountAndSwapTransaction(
 async function executeAndConfirmTransaction(connection, transaction, wallet) {
   transaction.sign([wallet.payer]);
   const rawTransaction = transaction.serialize();
-  const txid = await connection.sendRawTransaction(rawTransaction, {
+  const txId = await connection.sendRawTransaction(rawTransaction, {
     skipPreflight: true,
     maxRetries: 3
   });
 
-  console.log(`Transaction sent: ${txid}`);
+  console.log(`Transaction sent: ${txId}`);
 
-  const MAX_RETRIES = 5;
-  const RETRY_DELAY = 2000; // 2 seconds
+  try {
+    let latestBlockHash = await connection.getLatestBlockhash('confirmed');
+    const confirmation = await connection.confirmTransaction({
+      blockhash: latestBlockHash.blockhash,
+      lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
+      signature: txId
+    }, 'confirmed');
 
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      let latestBlockHash = await connection.getLatestBlockhash('confirmed');
-      const confirmation = await connection.confirmTransaction({
-        blockhash: latestBlockHash.blockhash,
-        lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-        signature: txid
-      }, 'confirmed');
-
-      if (confirmation.value.err) {
-        throw new Error(`Transaction failed: ${confirmation.value.err}`);
-      }
-
-      console.log(`Transaction confirmed after ${attempt + 1} attempt(s)`);
-      return txid;
-    } catch (error) {
-      if (attempt === MAX_RETRIES - 1) {
-        throw error;
-      }
-      console.log(`Confirmation attempt ${attempt + 1} failed, retrying in ${RETRY_DELAY / 1000} seconds...`);
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+    if (confirmation.value.err) {
+      throw new Error(`Transaction failed: ${confirmation.value.err}`);
     }
+
+    //console.log(`Transaction confirmed`);
+    return txId;
+  } catch (error) {
+    console.error(`Transaction confirmation failed: ${error.message}`);
+    throw error; // Propagate the error to be caught in swapTokensWithRetry
   }
 }
 
@@ -398,17 +402,21 @@ async function swapTokensWithRetry(
   sentiment,
   BASE_SWAP_URL,
   USDC,
-  SOL,
+  SOL
 ) {
+  const MAX_RETRIES = 3; // Limit the number of retries
+  const RETRY_DELAY = 5000; // 5 seconds delay between retries
+
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      console.log(`Attempt ${attempt + 1} of ${MAX_RETRIES}`);
+      console.log(`Swap attempt ${attempt + 1} of ${MAX_RETRIES}`);
 
-      // Fetch the latest price and balance before each attempt
       const latestPrice = await fetchPrice(BASE_PRICE_URL, SOL);
-      const { solBalance, usdcBalance } = await updatePortfolioBalances();
 
-      // Check if we should proceed with the swap
+      // Get fresh "Pre-swap Balances"
+      const preSwapBalances = await updatePortfolioBalances();
+      //console.log("Pre-swap Balances:", preSwapBalances);
+
       if (sentiment === "NEUTRAL") {
         console.log("Neutral sentiment. No swap needed.");
         return null;
@@ -427,9 +435,13 @@ async function swapTokensWithRetry(
       const inputToken = isBuying ? USDC : SOL;
       const outputToken = isBuying ? SOL : USDC;
 
-      console.log(`Current ${inputToken.NAME} balance: ${isBuying ? usdcBalance : solBalance}`);
+      console.log(`Current ${inputToken.NAME} balance: ${isBuying ? preSwapBalances.usdcBalance : preSwapBalances.solBalance}`);
 
-      const tradeAmountLamports = calculateTradeAmount(isBuying ? usdcBalance : solBalance, sentiment, inputToken);
+      const tradeAmountLamports = calculateTradeAmount(
+        isBuying ? preSwapBalances.usdcBalance : preSwapBalances.solBalance,
+        sentiment,
+        inputToken
+      );
       console.log(`Attempting to swap ${(tradeAmountLamports / (10 ** inputToken.DECIMALS)).toFixed(inputToken.DECIMALS)} ${inputToken.NAME} for ${outputToken.NAME}...`);
 
       if (tradeAmountLamports <= 0) {
@@ -437,13 +449,10 @@ async function swapTokensWithRetry(
         return null;
       }
 
-      // Get a new quote for each attempt
       const quoteResponse = await getQuote(BASE_SWAP_URL, inputMint, outputMint, tradeAmountLamports, slippageBps);
 
-      // Define the referral account public key
       const referralAccountPubkey = new PublicKey("7WGULgEo4Veqj6sCvA3VNxGgBf3EXJd8sW2XniBda3bJ");
 
-      // Get the swap transaction with fee account
       const swapTransaction = await getFeeAccountAndSwapTransaction(
         referralAccountPubkey,
         new PublicKey(inputMint),
@@ -458,75 +467,82 @@ async function swapTokensWithRetry(
       const swapTransactionBuf = Buffer.from(swapTransaction, 'base64');
       const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
 
-      const txid = await executeAndConfirmTransaction(connection, transaction, wallet);
+      const txId = await executeAndConfirmTransaction(connection, transaction, wallet);
 
-      // Immediately update portfolio balances after successful swap
-      const newBalances = await updatePortfolioBalances();
+      console.log(`Swap transaction confirmed. Waiting 2s before checking balances...`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Get post-swap balances
+      const postSwapBalances = await updatePortfolioBalances();
+      //console.log("Post-swap Balances:", postSwapBalances);
+
+      // Calculate the actual amounts swapped
+      const solChange = postSwapBalances.solBalance - preSwapBalances.solBalance;
+      const usdcChange = postSwapBalances.usdcBalance - preSwapBalances.usdcBalance;
+
+      // Determine if it's a buy or sell operation
+      const isBuyingSOL = solChange > 0;
+
+      // Calculate the true price based on the actual amounts swapped
+      const truePrice = isBuyingSOL
+        ? Math.abs(usdcChange) / Math.abs(solChange)
+        : Math.abs(usdcChange) / Math.abs(solChange);
 
       console.log(`Swap successful on attempt ${attempt + 1}`);
-      console.log(`Transaction Details: https://solscan.io/tx/${txid}`);
+      console.log(`Transaction Details: https://solscan.io/tx/${txId}`);
+      console.log(`True swap price: $${truePrice.toFixed(4)}`);
+      console.log(`SOL change: ${solChange.toFixed(SOL.DECIMALS)} ${isBuyingSOL ? 'bought' : 'sold'}`);
+      console.log(`USDC change: ${usdcChange.toFixed(USDC.DECIMALS)}`);
 
       return {
-        txid,
-        price: latestPrice,
-        oldBalances: { solBalance, usdcBalance },
-        newBalances
+        txId,
+        price: truePrice,
+        solChange,
+        usdcChange,
+        oldBalances: preSwapBalances,
+        newBalances: postSwapBalances
       };
 
     } catch (error) {
       console.error(`Error during swap attempt ${attempt + 1}:`, error);
       if (attempt < MAX_RETRIES - 1) {
-        console.log(`Retrying in ${RETRY_DELAY / 1000} seconds...`);
+        console.log(`Retrying swap in ${RETRY_DELAY / 1000} seconds...`);
         await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
       } else {
-        console.error(`All ${MAX_RETRIES} attempts failed. Aborting swap.`);
+        console.error(`All ${MAX_RETRIES} swap attempts failed. Aborting swap.`);
         return null;
       }
     }
   }
 }
 
-function parseJupiterSwapTransaction(txInfo, inputMint, outputMint) {
-  const postTokenBalances = txInfo.meta.postTokenBalances;
-  const preTokenBalances = txInfo.meta.preTokenBalances;
-
-  let inputAmount = 0;
-  let outputAmount = 0;
-
-  for (let i = 0; i < postTokenBalances.length; i++) {
-    const post = postTokenBalances[i];
-    const pre = preTokenBalances[i];
-
-    if (post.mint === inputMint) {
-      inputAmount = Math.abs(parseInt(pre.uiTokenAmount.amount) - parseInt(post.uiTokenAmount.amount));
-    } else if (post.mint === outputMint) {
-      outputAmount = Math.abs(parseInt(post.uiTokenAmount.amount) - parseInt(pre.uiTokenAmount.amount));
-    }
-  }
-
-  return { inputAmount, outputAmount };
-}
-
 function updatePositionFromSwap(swapResult, sentiment) {
   if (!swapResult) {
     console.log("No swap executed. Position remains unchanged.");
-    return;
+    return null;
   }
 
-  const { price, oldBalances, newBalances } = swapResult;
+  const { price, solChange, usdcChange, txId } = swapResult;
 
-  // Calculate the changes in balances
-  const solChange = newBalances.solBalance - oldBalances.solBalance;
-  const usdcChange = newBalances.usdcBalance - oldBalances.usdcBalance;
-
-  // Log the trade with the actual balance changes
+  // Log the trade with the actual balance changes and true price
   position.logTrade(sentiment, price, solChange, usdcChange);
 
-  console.log(`Trade executed at $${price.toFixed(2)}`);
-  console.log(`SOL balance change: ${solChange.toFixed(SOL.DECIMALS)}`);
-  console.log(`USDC balance change: ${usdcChange.toFixed(USDC.DECIMALS)}`);
+  //console.log(`Trade executed at price: $${price.toFixed(4)}`);
+  //console.log(`SOL balance change: ${solChange.toFixed(SOL.DECIMALS)}`);
+  //console.log(`USDC balance change: ${usdcChange.toFixed(USDC.DECIMALS)}`);
 
   logPositionUpdate(price);
+
+  const tradeType = solChange > 0 ? "Bought" : "Sold";
+  const tradeAmount = Math.abs(solChange);
+
+  return {
+    type: tradeType,
+    amount: tradeAmount,
+    price: price,
+    timestamp: getRecentTradeTimestamp(),
+    txId: txId
+  };
 }
 
 function logPositionUpdate(currentPrice) {
@@ -543,6 +559,7 @@ function logPositionUpdate(currentPrice) {
 
 async function main() {
   try {
+    console.clear();
     position.incrementCycle();
 
     const fearGreedIndex = await fetchFearGreedIndex();
@@ -559,6 +576,7 @@ async function main() {
 
     let swapResult = null;
     let recentTrade = null;
+    let txId = null;
 
     if (sentiment !== "NEUTRAL") {
       swapResult = await swapTokensWithRetry(
@@ -567,29 +585,20 @@ async function main() {
         sentiment,
         BASE_SWAP_URL,
         USDC,
-        SOL,
-        currentPrice
+        SOL
       );
 
       if (swapResult) {
-        updatePositionFromSwap(swapResult, sentiment);
-        const tradeAmount = Math.abs(swapResult.newBalances.solBalance - swapResult.oldBalances.solBalance);
-        recentTrade = {
-          type: sentiment === "EXTREME_FEAR" || sentiment === "FEAR" ? "Bought" : "Sold",
-          amount: tradeAmount,
-          price: currentPrice,
-          timestamp: getRecentTradeTimestamp()
-        };
+        txId = swapResult.txId;
+        recentTrade = updatePositionFromSwap(swapResult, sentiment);
+        if (recentTrade) {
+          addRecentTrade(recentTrade);
+          console.log(`${getTimestamp()}: ${recentTrade.type} ${recentTrade.amount.toFixed(6)} SOL at $${recentTrade.price.toFixed(2)}`);
+        } else {
+          console.log(`${getTimestamp()}: No trade executed this cycle.`);
+        }
       }
     }
-
-    if (recentTrade) {
-      addRecentTrade(recentTrade);
-      console.log("Trade executed:", recentTrade);
-    } else {
-      console.log("No trade executed this cycle.");
-    }
-
     const enhancedStats = position.getEnhancedStatistics(currentPrice);
 
     console.log("\n--- Enhanced Trading Statistics ---");
@@ -598,14 +607,12 @@ async function main() {
     console.log(`Portfolio Value: $${enhancedStats.portfolioValue.initial} -> $${enhancedStats.portfolioValue.current} (${enhancedStats.portfolioValue.change >= 0 ? '+' : ''}${enhancedStats.portfolioValue.change}) (${enhancedStats.portfolioValue.percentageChange}%)`);
     console.log(`SOL Price: $${enhancedStats.solPrice.initial} -> $${enhancedStats.solPrice.current} (${enhancedStats.solPrice.percentageChange}%)`);
     console.log(`PnL: Realized: $${enhancedStats.pnl.realized}, Unrealized: $${enhancedStats.pnl.unrealized}, Total: $${enhancedStats.pnl.total}`);
-    console.log(`Total Extreme Fear Buys: ${enhancedStats.extremeFearBuys} SOL`);
-    console.log(`Total Fear Buys: ${enhancedStats.fearBuys} SOL`);
-    console.log(`Total Greed Sells: ${enhancedStats.greedSells} SOL`);
-    console.log(`Total Extreme Greed Sells: ${enhancedStats.extremeGreedSells} SOL`);
     console.log(`Total Volume: ${enhancedStats.totalVolume.sol} SOL / ${enhancedStats.totalVolume.usdc} USDC ($${enhancedStats.totalVolume.usd})`);
     console.log(`Balances: SOL: ${enhancedStats.balances.sol.initial} -> ${enhancedStats.balances.sol.current}, USDC: ${enhancedStats.balances.usdc.initial} -> ${enhancedStats.balances.usdc.current}`);
     console.log(`Average Prices: Entry: $${enhancedStats.averagePrices.entry}, Sell: $${enhancedStats.averagePrices.sell}`);
     console.log("------------------------------------\n");
+
+    console.log(txId);
 
     let tradingData = {
       timestamp,
@@ -619,7 +626,8 @@ async function main() {
       unrealizedPnL: parseFloat(enhancedStats.pnl.unrealized),
       totalPnL: parseFloat(enhancedStats.pnl.total),
       averageEntryPrice: parseFloat(enhancedStats.averagePrices.entry) || 0,
-      averageSellPrice: parseFloat(enhancedStats.averagePrices.sell) || 0
+      averageSellPrice: parseFloat(enhancedStats.averagePrices.sell) || 0,
+      txId
     };
 
     emitTradingData(tradingData);
@@ -634,14 +642,6 @@ async function main() {
   }
 }
 
-function logData(timestamp, price, fearGreedIndex, sentiment, usdcBalance, solBalance, realizedPnL, unrealizedPnL, totalPnL) {
-  const portfolioValue = usdcBalance + solBalance * price;
-  const data = `${timestamp},${price},${fearGreedIndex},${sentiment},${usdcBalance},${solBalance},${portfolioValue},${position.getAverageEntryPrice()},${realizedPnL},${unrealizedPnL},${totalPnL}\n`;
-  fs.appendFileSync('trading_data.csv', data);
-
-  console.log(`FGI: ${fearGreedIndex} - ${sentiment}, Price: $${price}, Portfolio: $${portfolioValue.toFixed(2)}`);
-}
-
 function initializeCSV() {
   const headers = 'Timestamp,Price,FGIndex,Sentiment,USDCBalance,SOLBalance,PortfolioValue,AverageEntryPrice,RealizedPnL,UnrealizedPnL,TotalPnL\n';
   fs.writeFileSync('trading_data.csv', headers);
@@ -653,16 +653,16 @@ function handleParameterUpdate(newParams) {
   console.log(JSON.stringify(newParams, null, 2));
 
   if (newParams.SENTIMENT_BOUNDARIES) {
-    Object.keys(newParams.SENTIMENT_BOUNDARIES).forEach(key => {
-      SENTIMENT_BOUNDARIES[key] = newParams.SENTIMENT_BOUNDARIES[key];
-    });
+    SENTIMENT_BOUNDARIES = newParams.SENTIMENT_BOUNDARIES;
     console.log('Sentiment boundaries updated. New boundaries:', SENTIMENT_BOUNDARIES);
   }
   if (newParams.SENTIMENT_MULTIPLIERS) {
-    Object.keys(newParams.SENTIMENT_MULTIPLIERS).forEach(key => {
-      SENTIMENT_MULTIPLIERS[key] = newParams.SENTIMENT_MULTIPLIERS[key];
-    });
+    SENTIMENT_MULTIPLIERS = newParams.SENTIMENT_MULTIPLIERS;
     console.log('Sentiment multipliers updated. New multipliers:', SENTIMENT_MULTIPLIERS);
+  }
+  if (newParams.INTERVAL) {
+    INTERVAL = newParams.INTERVAL;
+    console.log('Interval updated. New interval:', INTERVAL);
   }
 
   console.log('Trading strategy will adjust in the next cycle.');
@@ -676,7 +676,6 @@ async function initialize() {
   const { solBalance, usdcBalance } = await checkBalance();
   const currentPrice = await fetchPrice(BASE_PRICE_URL, SOL);
   position = new Position(solBalance, usdcBalance, currentPrice);
-  isInitialized = true;
   console.log("Initialization complete. Starting trading operations.");
   console.log(`Initial position: ${solBalance.toFixed(SOL.DECIMALS)} ${SOL.NAME}, ${usdcBalance.toFixed(USDC.DECIMALS)} USDC`);
   console.log(`Initial SOL price: $${currentPrice.toFixed(2)}`);
