@@ -137,8 +137,9 @@ function addRecentTrade(trade) {
 
 // API routes
 app.get('/api/initial-data', (req, res) => {
-  if (initialData) {
-    res.json({ ...initialData, recentTrades });
+  const latestData = getLatestTradingData();
+  if (latestData) {
+    res.json(latestData);
   } else {
     res.status(503).json({ error: 'Initial data not yet available' });
   }
@@ -169,6 +170,26 @@ io.on('connection', (socket) => {
   });
 });
 
+function getLatestTradingData() {
+  if (!initialData) {
+    return null;
+  }
+  return {
+    ...initialData,
+    recentTrades,
+    averageEntryPrice: initialData.averageEntryPrice > 0 ? initialData.averageEntryPrice.toFixed(2) : 'N/A',
+    averageSellPrice: initialData.averageSellPrice > 0 ? initialData.averageSellPrice.toFixed(2) : 'N/A',
+    realizedPnL: initialData.realizedPnL.toFixed(3),
+    unrealizedPnL: initialData.unrealizedPnL.toFixed(3),
+    totalPnL: initialData.totalPnL.toFixed(3),
+    portfolioValue: initialData.portfolioValue.toFixed(2),
+    usdcBalance: initialData.usdcBalance.toFixed(2),
+    solBalance: initialData.solBalance.toFixed(6),
+    price: initialData.price.toFixed(2),
+    txUrl: initialData.txUrl
+  };
+}
+
 function emitTradingData(data) {
   const emitData = {
     timestamp: data.timestamp,
@@ -189,6 +210,9 @@ function emitTradingData(data) {
   };
   console.log('Emitting trading data:', emitData);
   io.emit('tradingUpdate', emitData);
+
+  // Update initialData with the latest data
+  initialData = { ...data, recentTrades };
 }
 
 module.exports = {
@@ -200,5 +224,6 @@ module.exports = {
   },
   addRecentTrade,
   emitTradingData,
+  getLatestTradingData,
   readSettings
 };

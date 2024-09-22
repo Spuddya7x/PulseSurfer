@@ -211,8 +211,17 @@ function getSentiment(data) {
 
 function getTimestamp() {
   const now = new Date();
-  const formatOptions = { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
-  return now.toLocaleString('en-US', formatOptions).replace(/,/g, ':');
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+  const weekday = days[now.getDay()];
+  const day = String(now.getDate()).padStart(2, '0');
+  const month = months[now.getMonth()];
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+
+  return `${weekday}, ${day}/${month}, ${hours}:${minutes}:${seconds}`;
 }
 
 function getRecentTradeTimestamp() {
@@ -541,7 +550,7 @@ function updatePositionFromSwap(swapResult, sentiment) {
     amount: tradeAmount,
     price: price,
     timestamp: getRecentTradeTimestamp(),
-    txId: txId
+    txUrl: `https://solscan.io/tx/${txId}`
   };
 }
 

@@ -344,30 +344,84 @@
             }
         }
 
-        @media (max-width: 600px) {
-            .data-item .data-value {
-                display: block;
-                margin-top: 5px;
-            }
+        @media (max-width: 768px) {
+        body {
+            padding: 10px;
+        }
 
-            .pnl-summary {
-                flex-direction: column;
-            }
+        .chart-section {
+            flex-direction: column;
+        }
+
+        .chart-container, .chart-sidebar {
+            width: 100%;
+            margin-left: 0;
+        }
+
+        .chart-container iframe {
+            height: 400px;  /* Reduced height for mobile */
+        }
+
+        .recent-trades {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        #tradeList {
+            max-height: none;
+        }
+
+        .grid {
+            grid-template-columns: 1fr;
+        }
+
+        .sentiment-row {
+            flex-direction: column;
+        }
+
+        .sentiment-input {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+
+        .data-item {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .data-value {
+            margin-top: 5px;
         }
 
         .pnl-summary {
-            display: flex;
-            justify-content: space-between;
-            gap: 10px;
+            flex-direction: column;
         }
 
         .pnl-summary span {
-            flex: 1;
-            padding: 5px;
-            border: 1px solid var(--solana-purple);
-            border-radius: 4px;
-            text-align: center;
+            margin-bottom: 5px;
         }
+    }
+
+    /* Add these styles to improve scrolling on mobile */
+    @media (max-width: 768px) {
+        #tradeList {
+            -webkit-overflow-scrolling: touch;
+            overflow-y: scroll;
+        }
+
+        #tradeList::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        #tradeList::-webkit-scrollbar-thumb {
+            background-color: var(--solana-purple);
+            border-radius: 3px;
+        }
+
+        #tradeList::-webkit-scrollbar-track {
+            background-color: var(--background);
+        }
+    }
 
         #loginForm {
     background-color: var(--card-bg);
@@ -569,7 +623,28 @@
                 document.body.appendChild(tooltip);
                 return tooltip;
             }
+
         const tooltip = createTooltip();
+
+        function updateTooltipPosition(e) {
+                const tooltipWidth = tooltip.offsetWidth;
+                const tooltipHeight = tooltip.offsetHeight;
+
+                // Use clientX and clientY for viewport-relative coordinates
+                let left = e.clientX + 10;
+                let top = e.clientY + 10;
+
+                // Adjust if tooltip would appear off-screen
+                if (left + tooltipWidth > window.innerWidth) {
+                    left = window.innerWidth - tooltipWidth - 10;
+                }
+                if (top + tooltipHeight > window.innerHeight) {
+                    top = window.innerHeight - tooltipHeight - 10;
+                }
+
+                tooltip.style.left = left + 'px';
+                tooltip.style.top = top + 'px';
+            }
 
         function updateTradingData(data) {
             tradingDataElement.innerHTML = `
@@ -711,30 +786,28 @@
 
                     console.log('Trade content:', tradeContent);
 
+                    const tradeLink = document.createElement('a');
+                    tradeLink.href = trade.txUrl || '#';
+                    tradeLink.target = "_blank";
+                    tradeLink.textContent = tradeContent;
+
                     if (trade.txUrl) {
                         console.log('Creating clickable trade entry with URL:', trade.txUrl);
-                        const tradeLink = document.createElement('a');
-                        tradeLink.href = trade.txUrl;
-                        tradeLink.target = "_blank";
-                        tradeLink.textContent = tradeContent;
-
                         // Add event listeners for tooltip
                         tradeLink.addEventListener('mousemove', (e) => {
                             tooltip.style.opacity = '1';
                             tooltip.textContent = 'See on Solscan';
-                            tooltip.style.left = (e.pageX + 10) + 'px';
-                            tooltip.style.top = (e.pageY + 10) + 'px';
+                            updateTooltipPosition(e);
                         });
                         tradeLink.addEventListener('mouseout', () => {
                             tooltip.style.opacity = '0';
                         });
-
-                        tradeItem.appendChild(tradeLink);
                     } else {
-                        console.log('No txUrl provided, creating text-only trade entry');
-                        tradeItem.textContent = tradeContent;
+                        console.log('No txUrl provided, creating non-clickable trade entry');
+                        tradeLink.style.pointerEvents = 'none';
                     }
 
+                    tradeItem.appendChild(tradeLink);
                     tradeItem.classList.add(action.toLowerCase() === 'bought' ? 'trade-buy' : 'trade-sell');
 
                     tradeListElement.insertBefore(tradeItem, tradeListElement.firstChild);
@@ -756,29 +829,30 @@
 
 
         function fetchInitialData() {
-            authenticatedFetch('/api/initial-data')
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Initial data not yet available');
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    updateTradingData(data);
-                    return authenticatedFetch('/api/params');
-                })
-                .then(response => response.json())
-                .then(data => {
-                    updateFormValues(data);
-                })
-                .catch(error => {
-                    console.error('Error fetching initial data:', error);
-                    if (error.message !== 'Authentication required') {
-                        showFeedback('Retrying in 5 seconds...', 'info');
-                        setTimeout(fetchInitialData, 5000);
-                    }
-                });
-        }
+                authenticatedFetch('/api/initial-data')
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Initial data not yet available');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        updateTradingData(data);
+                        updateTradeList(data.recentTrades);
+                        return authenticatedFetch('/api/params');
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        updateFormValues(data);
+                    })
+                    .catch(error => {
+                        console.error('Error fetching initial data:', error);
+                        if (error.message !== 'Authentication required') {
+                            showFeedback('Retrying in 5 seconds...', 'info');
+                            setTimeout(fetchInitialData, 5000);
+                        }
+                    });
+            }
 
         // Initial check
             authenticatedFetch('/api/initial-data')
@@ -805,11 +879,8 @@
                         const mostRecentTrade = data.recentTrades[0];
                         console.log('Most recent trade:', mostRecentTrade);
 
-                        // Create a new trade object with the txUrl from the main data object
-                        const tradeToAdd = {
-                            ...mostRecentTrade,
-                            txUrl: data.txUrl // Add the txUrl from the main data object
-                        };
+                        // The trade object should already have the txUrl, so we don't need to add it
+                        const tradeToAdd = mostRecentTrade;
 
                         console.log('Trade to add:', tradeToAdd);
                         addTrade(tradeToAdd);
@@ -817,11 +888,6 @@
                         console.log('No recent trades in the update');
                     }
                 });
-
-            socket.on('paramsUpdated', (params) => {
-                console.log('Parameters updated:', params);
-                updateFormValues(params);
-            });
 
             paramForm.addEventListener('submit', (e) => {
                 e.preventDefault();

@@ -1,7 +1,7 @@
 {
   "SENTIMENT_BOUNDARIES": {
     "EXTREME_FEAR": 21,
-    "FEAR": 60,
+    "FEAR": 31,
     "GREED": 61,
     "EXTREME_GREED": 87
   },
