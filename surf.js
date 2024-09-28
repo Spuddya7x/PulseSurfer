@@ -9,6 +9,7 @@ const { Keypair, Connection, PublicKey, LAMPORTS_PER_SOL, VersionedTransaction }
 const { getAssociatedTokenAddress } = require("@solana/spl-token");
 const { Wallet } = require('@project-serum/anchor');
 const fetch = require('cross-fetch');
+const os = require('os');
 
 // Load environment variables
 function setupEnvFile() {
@@ -60,13 +61,6 @@ const BASE_SWAP_URL = "https://quote-api.jup.ag/v6";
 let position;
 let keypair, connection;
 let wallet;
-let MAX_RETRIES = 5;
-let RETRY_DELAY = 2000; // 2 seconds
-let startTime = Date.now();
-let totalCycles = 0;
-let startingPortfolioValue = 0;
-let totalVolumeSol = 0;
-let totalVolumeUsdc = 0;
 
 updateTradingScript = handleParameterUpdate;
 
@@ -77,6 +71,25 @@ const progressBar = new cliProgress.SingleBar({
   barIncompleteChar: '\u2591',
   hideCursor: true
 });
+
+function getLocalIpAddress() {
+  const interfaces = os.networkInterfaces();
+  for (const devName in interfaces) {
+    const iface = interfaces[devName];
+    for (let i = 0; i < iface.length; i++) {
+      const alias = iface[i];
+      if (alias.family === 'IPv4' && !alias.internal) {
+        // Check for typical LAN IP ranges
+        if (alias.address.startsWith('192.168.') ||
+          alias.address.startsWith('10.') ||
+          alias.address.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./)) {
+          return alias.address;
+        }
+      }
+    }
+  }
+  return 'Unable to determine LAN IP address';
+}
 
 async function getTokenBalance(connection, walletAddress, mintAddress) {
   try {
@@ -311,7 +324,8 @@ async function getQuote(BASE_SWAP_URL, inputMint, outputMint, tradeAmountLamport
     slippageBps: slippageBps.toString(),
     platformFeeBps: '25',
     maxAutoSlippageBps: '500', // Maximum 5% slippage
-    autoSlippage: 'true'
+    autoSlippage: 'true',
+    onlyDirectRoutes: 'true',
   });
 
   const quoteUrl = `${BASE_SWAP_URL}/quote?${params.toString()}`;
@@ -352,6 +366,8 @@ async function getFeeAccountAndSwapTransaction(
       userPublicKey: wallet.publicKey.toString(),
       wrapAndUnwrapSol: true,
       feeAccount: feeAccount.toString(),
+      dynamicComputeUnitLimit: true,
+      prioritizationFeeLamports: 'auto'
     };
 
     const response = await fetch("https://quote-api.jup.ag/v6/swap", {
@@ -380,7 +396,7 @@ async function executeAndConfirmTransaction(connection, transaction, wallet) {
   const rawTransaction = transaction.serialize();
   const txId = await connection.sendRawTransaction(rawTransaction, {
     skipPreflight: true,
-    maxRetries: 3
+    maxRetries: 0
   });
 
   console.log(`Transaction sent: ${txId}`);
@@ -415,6 +431,7 @@ async function swapTokensWithRetry(
 ) {
   const MAX_RETRIES = 3; // Limit the number of retries
   const RETRY_DELAY = 5000; // 5 seconds delay between retries
+  const MAX_BALANCE_CHECK_ATTEMPTS = 5;
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
@@ -424,7 +441,6 @@ async function swapTokensWithRetry(
 
       // Get fresh "Pre-swap Balances"
       const preSwapBalances = await updatePortfolioBalances();
-      //console.log("Pre-swap Balances:", preSwapBalances);
 
       if (sentiment === "NEUTRAL") {
         console.log("Neutral sentiment. No swap needed.");
@@ -481,26 +497,36 @@ async function swapTokensWithRetry(
       console.log(`Swap transaction confirmed. Waiting 2s before checking balances...`);
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Get post-swap balances
-      const postSwapBalances = await updatePortfolioBalances();
-      //console.log("Post-swap Balances:", postSwapBalances);
+      // Get post-swap balances with retries
+      let postSwapBalances;
+      let solChange;
+      let usdcChange;
+      let balanceCheckAttempt = 0;
 
-      // Calculate the actual amounts swapped
-      const solChange = postSwapBalances.solBalance - preSwapBalances.solBalance;
-      const usdcChange = postSwapBalances.usdcBalance - preSwapBalances.usdcBalance;
+      while (balanceCheckAttempt < MAX_BALANCE_CHECK_ATTEMPTS) {
+        postSwapBalances = await updatePortfolioBalances();
+        solChange = postSwapBalances.solBalance - preSwapBalances.solBalance;
+        usdcChange = postSwapBalances.usdcBalance - preSwapBalances.usdcBalance;
 
-      // Determine if it's a buy or sell operation
-      const isBuyingSOL = solChange > 0;
+        if (Math.abs(solChange) > 0 && Math.abs(usdcChange) > 0) {
+          break; // Both changes are non-zero, proceed with calculations
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        balanceCheckAttempt++;
+      }
+
+      if (Math.abs(solChange) === 0 || Math.abs(usdcChange) === 0) {
+        throw new Error("Unable to detect balance changes after multiple attempts");
+      }
 
       // Calculate the true price based on the actual amounts swapped
-      const truePrice = isBuyingSOL
-        ? Math.abs(usdcChange) / Math.abs(solChange)
-        : Math.abs(usdcChange) / Math.abs(solChange);
+      const truePrice = Math.abs(usdcChange) / Math.abs(solChange);
 
       console.log(`Swap successful on attempt ${attempt + 1}`);
       console.log(`Transaction Details: https://solscan.io/tx/${txId}`);
       console.log(`True swap price: $${truePrice.toFixed(4)}`);
-      console.log(`SOL change: ${solChange.toFixed(SOL.DECIMALS)} ${isBuyingSOL ? 'bought' : 'sold'}`);
+      console.log(`SOL change: ${solChange.toFixed(SOL.DECIMALS)} ${isBuying ? 'bought' : 'sold'}`);
       console.log(`USDC change: ${usdcChange.toFixed(USDC.DECIMALS)}`);
 
       return {
@@ -661,16 +687,18 @@ function handleParameterUpdate(newParams) {
   console.log('New parameters:');
   console.log(JSON.stringify(newParams, null, 2));
 
-  if (newParams.SENTIMENT_BOUNDARIES) {
-    SENTIMENT_BOUNDARIES = newParams.SENTIMENT_BOUNDARIES;
+  const updatedSettings = readSettings(); // Read the updated settings
+
+  if (updatedSettings.SENTIMENT_BOUNDARIES) {
+    SENTIMENT_BOUNDARIES = updatedSettings.SENTIMENT_BOUNDARIES;
     console.log('Sentiment boundaries updated. New boundaries:', SENTIMENT_BOUNDARIES);
   }
-  if (newParams.SENTIMENT_MULTIPLIERS) {
-    SENTIMENT_MULTIPLIERS = newParams.SENTIMENT_MULTIPLIERS;
+  if (updatedSettings.SENTIMENT_MULTIPLIERS) {
+    SENTIMENT_MULTIPLIERS = updatedSettings.SENTIMENT_MULTIPLIERS;
     console.log('Sentiment multipliers updated. New multipliers:', SENTIMENT_MULTIPLIERS);
   }
-  if (newParams.INTERVAL) {
-    INTERVAL = newParams.INTERVAL;
+  if (updatedSettings.INTERVAL) {
+    INTERVAL = updatedSettings.INTERVAL;
     console.log('Interval updated. New interval:', INTERVAL);
   }
 
@@ -685,6 +713,12 @@ async function initialize() {
   const { solBalance, usdcBalance } = await checkBalance();
   const currentPrice = await fetchPrice(BASE_PRICE_URL, SOL);
   position = new Position(solBalance, usdcBalance, currentPrice);
+ 
+  const settings = readSettings();
+  SENTIMENT_BOUNDARIES = settings.SENTIMENT_BOUNDARIES;
+  SENTIMENT_MULTIPLIERS = settings.SENTIMENT_MULTIPLIERS;
+  INTERVAL = settings.INTERVAL;
+
   console.log("Initialization complete. Starting trading operations.");
   console.log(`Initial position: ${solBalance.toFixed(SOL.DECIMALS)} ${SOL.NAME}, ${usdcBalance.toFixed(USDC.DECIMALS)} USDC`);
   console.log(`Initial SOL price: $${currentPrice.toFixed(2)}`);
@@ -709,8 +743,10 @@ async function initialize() {
   emitTradingData(initialData);
 
   const PORT = process.env.PORT || 3000;
+  const localIpAddress = getLocalIpAddress();
   server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    console.log(`Your Local IP: http://${localIpAddress}:${PORT}`);
     console.log('Listening for parameter updates from web UI...');
   });
 }

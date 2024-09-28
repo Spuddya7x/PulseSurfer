@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PulseSurfer Trading Bot</title>
-    <link rel="icon" href="/arb_icon.svg" type="image/svg+xml">
+    <link rel="icon" href="/bop_icon.svg" type="image/svg+xml">
     <style>
         :root {
             --solana-purple: #9945FF;
@@ -323,136 +323,191 @@
             background: var(--dark-purple);
         }
 
-        @media (min-width: 1024px) {
-            .chart-section {
-                flex-direction: row;
-            }
+        .form-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
 
-            .chart-container {
-                width: 70%;
-                margin-bottom: 0;
-            }
+        .switch-container {
+            display: flex;
+            align-items: center;
+        }
 
-            .chart-sidebar {
-                width: 28%;
-                margin-left: 2%;
-            }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+            margin-right: 10px;
+        }
 
-            .fgi-display,
-            .recent-trades {
-                width: 100%;
-            }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--solana-purple);
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked+.slider {
+            background-color: var(--solana-cyan);
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(26px);
+        }
+
+        /* Style for disabled inputs and button */
+        input:disabled,
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
 
         @media (max-width: 768px) {
-        body {
-            padding: 10px;
+            body {
+                padding: 10px;
+            }
+
+            .chart-section {
+                flex-direction: column;
+            }
+
+            .chart-container,
+            .chart-sidebar {
+                width: 100%;
+                margin-left: 0;
+            }
+
+            .chart-container iframe {
+                height: 400px;
+                /* Reduced height for mobile */
+            }
+
+            .recent-trades {
+                max-height: 300px;
+                overflow-y: auto;
+            }
+
+            #tradeList {
+                max-height: none;
+            }
+
+            .grid {
+                grid-template-columns: 1fr;
+            }
+
+            .sentiment-row {
+                flex-direction: column;
+            }
+
+            .sentiment-input {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+
+            .data-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .data-value {
+                margin-top: 5px;
+            }
+
+            .pnl-summary {
+                flex-direction: column;
+            }
+
+            .pnl-summary span {
+                margin-bottom: 5px;
+            }
+
+            .form-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .switch-container {
+                margin-top: 10px;
+            }
         }
 
-        .chart-section {
-            flex-direction: column;
-        }
+        /* Add these styles to improve scrolling on mobile */
+        @media (max-width: 768px) {
+            #tradeList {
+                -webkit-overflow-scrolling: touch;
+                overflow-y: scroll;
+            }
 
-        .chart-container, .chart-sidebar {
-            width: 100%;
-            margin-left: 0;
-        }
+            #tradeList::-webkit-scrollbar {
+                width: 6px;
+            }
 
-        .chart-container iframe {
-            height: 400px;  /* Reduced height for mobile */
-        }
+            #tradeList::-webkit-scrollbar-thumb {
+                background-color: var(--solana-purple);
+                border-radius: 3px;
+            }
 
-        .recent-trades {
-            max-height: 300px;
-            overflow-y: auto;
+            #tradeList::-webkit-scrollbar-track {
+                background-color: var(--background);
+            }
         }
-
-        #tradeList {
-            max-height: none;
-        }
-
-        .grid {
-            grid-template-columns: 1fr;
-        }
-
-        .sentiment-row {
-            flex-direction: column;
-        }
-
-        .sentiment-input {
-            width: 100%;
-            margin-bottom: 10px;
-        }
-
-        .data-item {
-            flex-direction: column;
-            align-items: flex-start;
-        }
-
-        .data-value {
-            margin-top: 5px;
-        }
-
-        .pnl-summary {
-            flex-direction: column;
-        }
-
-        .pnl-summary span {
-            margin-bottom: 5px;
-        }
-    }
-
-    /* Add these styles to improve scrolling on mobile */
-    @media (max-width: 768px) {
-        #tradeList {
-            -webkit-overflow-scrolling: touch;
-            overflow-y: scroll;
-        }
-
-        #tradeList::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        #tradeList::-webkit-scrollbar-thumb {
-            background-color: var(--solana-purple);
-            border-radius: 3px;
-        }
-
-        #tradeList::-webkit-scrollbar-track {
-            background-color: var(--background);
-        }
-    }
 
         #loginForm {
-    background-color: var(--card-bg);
-    border-radius: 10px;
-    padding: 20px;
-    box-shadow: 0 0 20px rgba(153, 69, 255, 0.1);
-    max-width: 300px;
-    margin: 100px auto;
-    text-align: center;
-}
+            background-color: var(--card-bg);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 0 20px rgba(153, 69, 255, 0.1);
+            max-width: 300px;
+            margin: 100px auto;
+            text-align: center;
+        }
 
-#loginForm input[type="password"] {
-    width: 100%;
-    padding: 10px;
-    margin-bottom: 10px;
-    border: 1px solid var(--solana-purple);
-    border-radius: 4px;
-    background-color: var(--background);
-    color: var(--text);
-    box-sizing: border-box;
-}
+        #loginForm input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid var(--solana-purple);
+            border-radius: 4px;
+            background-color: var(--background);
+            color: var(--text);
+            box-sizing: border-box;
+        }
 
-#loginForm button {
-    width: 100%;
-    padding: 10px;
-    background-color: var(--solana-purple);
-    color: var(--text);
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
+        #loginForm button {
+            width: 100%;
+            padding: 10px;
+            background-color: var(--solana-purple);
+            color: var(--text);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
     </style>
 </head>
 
@@ -494,6 +549,16 @@
                 <div class="card">
                     <h2>Trading Parameters</h2>
                     <form id="paramForm">
+                        <div class="form-header">
+                            <h3>Update Parameters</h3>
+                            <div class="switch-container">
+                                <label class="switch">
+                                    <input type="checkbox" id="readOnlyToggle">
+                                    <span class="slider"></span>
+                                </label>
+                                <span>Read-Only Mode</span>
+                            </div>
+                        </div>
                         <div class="sentiment-row">
                             <div class="sentiment-input">
                                 <label for="extremeGreedBoundary">Extreme Greed Boundary:</label>
@@ -567,6 +632,8 @@
         const fgiGaugeElement = document.getElementById('fgiGauge');
         const fgiPointerElement = document.getElementById('fgiPointer');
         const tradeListElement = document.getElementById('tradeList');
+        const readOnlyToggle = document.getElementById('readOnlyToggle');
+        const inputFields = document.querySelectorAll('#paramForm input');
 
         let sentimentBoundaries = {
             EXTREME_FEAR: 20,
@@ -618,33 +685,43 @@
         }
 
         function createTooltip() {
-                const tooltip = document.createElement('div');
-                tooltip.className = 'custom-tooltip';
-                document.body.appendChild(tooltip);
-                return tooltip;
-            }
+            const tooltip = document.createElement('div');
+            tooltip.className = 'custom-tooltip';
+            document.body.appendChild(tooltip);
+            return tooltip;
+        }
 
         const tooltip = createTooltip();
 
         function updateTooltipPosition(e) {
-                const tooltipWidth = tooltip.offsetWidth;
-                const tooltipHeight = tooltip.offsetHeight;
+            const tooltipWidth = tooltip.offsetWidth;
+            const tooltipHeight = tooltip.offsetHeight;
 
-                // Use clientX and clientY for viewport-relative coordinates
-                let left = e.clientX + 10;
-                let top = e.clientY + 10;
+            let left = e.clientX + 10;
+            let top = e.clientY + 10;
 
-                // Adjust if tooltip would appear off-screen
-                if (left + tooltipWidth > window.innerWidth) {
-                    left = window.innerWidth - tooltipWidth - 10;
-                }
-                if (top + tooltipHeight > window.innerHeight) {
-                    top = window.innerHeight - tooltipHeight - 10;
-                }
-
-                tooltip.style.left = left + 'px';
-                tooltip.style.top = top + 'px';
+            if (left + tooltipWidth > window.innerWidth) {
+                left = window.innerWidth - tooltipWidth - 10;
             }
+            if (top + tooltipHeight > window.innerHeight) {
+                top = window.innerHeight - tooltipHeight - 10;
+            }
+
+            tooltip.style.left = left + 'px';
+            tooltip.style.top = top + 'px';
+        }
+
+        function toggleReadOnlyMode() {
+                const isReadOnly = readOnlyToggle.checked;
+                inputFields.forEach(input => {
+                    if (input !== readOnlyToggle) {  // Don't disable the toggle itself
+                        input.disabled = isReadOnly;
+                    }
+                });
+                paramForm.querySelector('button[type="submit"]').disabled = isReadOnly;
+            }
+
+        readOnlyToggle.addEventListener('change', toggleReadOnlyMode);
 
         function updateTradingData(data) {
             tradingDataElement.innerHTML = `
@@ -746,151 +823,158 @@
         }
 
         function updateTradeList(trades) {
-                console.log('Updating trade list with:', trades);
-                tradeListElement.innerHTML = '';
+            console.log('Updating trade list with:', trades);
+            tradeListElement.innerHTML = '';
 
-                if (!trades || trades.length === 0) {
-                    console.log('No trades available, adding placeholder');
-                    const placeholderItem = document.createElement('li');
-                    placeholderItem.textContent = "No trades yet - check back soon!";
-                    placeholderItem.classList.add('trade-placeholder');
-                    tradeListElement.appendChild(placeholderItem);
-                } else {
-                    console.log('Adding trades to the list');
-                    trades.forEach(trade => addTrade(trade));
-                }
+            if (!trades || trades.length === 0) {
+                console.log('No trades available, adding placeholder');
+                const placeholderItem = document.createElement('li');
+                placeholderItem.textContent = "No trades yet - check back soon!";
+                placeholderItem.classList.add('trade-placeholder');
+                tradeListElement.appendChild(placeholderItem);
+            } else {
+                console.log('Adding trades to the list');
+                trades.slice().reverse().forEach(trade => addTrade(trade));
+            }
+        }
+
+        function addTrade(trade) {
+            console.log('Adding trade:', trade);
+
+            if (!trade) {
+                console.log('Trade object is null or undefined');
+                return;
             }
 
-            function addTrade(trade) {
-                    console.log('Adding trade:', trade);
+            const placeholder = tradeListElement.querySelector('.trade-placeholder');
+            if (placeholder) {
+                tradeListElement.removeChild(placeholder);
+            }
 
-                    if (!trade) {
-                        console.log('Trade object is null or undefined');
-                        return;
-                    }
+            const tradeItem = document.createElement('li');
+            const tradeDate = new Date(trade.timestamp);
+            const formattedTime = tradeDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
-                    const placeholder = tradeListElement.querySelector('.trade-placeholder');
-                    if (placeholder) {
-                        tradeListElement.removeChild(placeholder);
-                    }
+            let tradeContent;
+            if (trade.success === false) {
+                tradeContent = `${formattedTime}: ${trade.sentiment} transaction failed, click for details`;
+                tradeItem.classList.add('trade-failed');
+            } else {
+                const action = trade.type;
+                const amount = parseFloat(trade.amount).toFixed(6);
+                const price = parseFloat(trade.price).toFixed(2);
+                const unit = 'SOL';
+                tradeContent = `${formattedTime}: ${action} ${amount} ${unit} at $${price}`;
+                tradeItem.classList.add(action.toLowerCase() === 'bought' ? 'trade-buy' : 'trade-sell');
+            }
 
-                    const tradeItem = document.createElement('li');
-                    const tradeDate = new Date(trade.timestamp);
-                    const formattedTime = tradeDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-                    const action = trade.type;
-                    const amount = parseFloat(trade.amount).toFixed(6);
-                    const price = parseFloat(trade.price).toFixed(2);
-                    const unit = 'SOL';
+            console.log('Trade content:', tradeContent);
 
-                    const tradeContent = `${formattedTime}: ${action} ${amount} ${unit} at $${price}`;
+            const tradeLink = document.createElement('a');
+            tradeLink.href = trade.txUrl || '#';
+            tradeLink.target = "_blank";
+            tradeLink.textContent = tradeContent;
 
-                    console.log('Trade content:', tradeContent);
+            if (trade.txUrl) {
+                console.log('Creating clickable trade entry with URL:', trade.txUrl);
+                tradeLink.addEventListener('mousemove', (e) => {
+                    tooltip.style.opacity = '1';
+                    tooltip.textContent = 'See on Solscan';
+                    updateTooltipPosition(e);
+                });
+                tradeLink.addEventListener('mouseout', () => {
+                    tooltip.style.opacity = '0';
+                });
+            } else {
+                console.log('No txUrl provided, creating non-clickable trade entry');
+                tradeLink.style.pointerEvents = 'none';
+            }
 
-                    const tradeLink = document.createElement('a');
-                    tradeLink.href = trade.txUrl || '#';
-                    tradeLink.target = "_blank";
-                    tradeLink.textContent = tradeContent;
+            tradeItem.appendChild(tradeLink);
 
-                    if (trade.txUrl) {
-                        console.log('Creating clickable trade entry with URL:', trade.txUrl);
-                        // Add event listeners for tooltip
-                        tradeLink.addEventListener('mousemove', (e) => {
-                            tooltip.style.opacity = '1';
-                            tooltip.textContent = 'See on Solscan';
-                            updateTooltipPosition(e);
-                        });
-                        tradeLink.addEventListener('mouseout', () => {
-                            tooltip.style.opacity = '0';
-                        });
-                    } else {
-                        console.log('No txUrl provided, creating non-clickable trade entry');
-                        tradeLink.style.pointerEvents = 'none';
-                    }
+            tradeListElement.insertBefore(tradeItem, tradeListElement.firstChild);
+            if (tradeListElement.children.length > 10) {
+                tradeListElement.removeChild(tradeListElement.lastChild);
+            }
 
-                    tradeItem.appendChild(tradeLink);
-                    tradeItem.classList.add(action.toLowerCase() === 'bought' ? 'trade-buy' : 'trade-sell');
-
-                    tradeListElement.insertBefore(tradeItem, tradeListElement.firstChild);
-                    if (tradeListElement.children.length > 10) {
-                        tradeListElement.removeChild(tradeListElement.lastChild);
-                    }
-
-                    console.log('Trade added to list');
-                }
+            console.log('Trade added to list');
+        }
 
         function fetchRecentTrades() {
-                authenticatedFetch('/api/recent-trades')
-                    .then(response => response.json())
-                    .then(trades => {
-                        updateTradeList(trades);
-                    })
-                    .catch(error => console.error('Error fetching recent trades:', error));
-            }
-
+            authenticatedFetch('/api/recent-trades')
+                .then(response => response.json())
+                .then(trades => {
+                    updateTradeList(trades);
+                })
+                .catch(error => console.error('Error fetching recent trades:', error));
+        }
 
         function fetchInitialData() {
-                authenticatedFetch('/api/initial-data')
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Initial data not yet available');
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        updateTradingData(data);
-                        updateTradeList(data.recentTrades);
-                        return authenticatedFetch('/api/params');
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        updateFormValues(data);
-                    })
-                    .catch(error => {
-                        console.error('Error fetching initial data:', error);
-                        if (error.message !== 'Authentication required') {
-                            showFeedback('Retrying in 5 seconds...', 'info');
-                            setTimeout(fetchInitialData, 5000);
-                        }
-                    });
-            }
-
-        // Initial check
             authenticatedFetch('/api/initial-data')
-                .then(() => {
-                    showMainContent();
-                    fetchInitialData();
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Initial data not yet available');
+                    }
+                    return response.json();
                 })
-                .catch(() => showLoginForm());
-
-            socket.on('connect', () => {
-                console.log('Connected to WebSocket');
-                showFeedback('Connected to server', 'success');
-            });
-
-            socket.on('disconnect', () => {
-                console.log('Disconnected from WebSocket');
-                showFeedback('Disconnected from server', 'error');
-            });
-
-            socket.on('tradingUpdate', (data) => {
+                .then(data => {
                     updateTradingData(data);
-                    console.log('Received trading update:', data);
-                    if (data.recentTrades && data.recentTrades.length > 0) {
-                        const mostRecentTrade = data.recentTrades[0];
-                        console.log('Most recent trade:', mostRecentTrade);
-
-                        // The trade object should already have the txUrl, so we don't need to add it
-                        const tradeToAdd = mostRecentTrade;
-
-                        console.log('Trade to add:', tradeToAdd);
-                        addTrade(tradeToAdd);
-                    } else {
-                        console.log('No recent trades in the update');
+                    updateTradeList(data.recentTrades);
+                    return authenticatedFetch('/api/params');
+                })
+                .then(response => response.json())
+                .then(data => {
+                    updateFormValues(data);
+                })
+                .catch(error => {
+                    console.error('Error fetching initial data:', error);
+                    if (error.message !== 'Authentication required') {
+                        showFeedback('Retrying in 5 seconds...', 'info');
+                        setTimeout(fetchInitialData, 5000);
                     }
                 });
+        }
 
-            paramForm.addEventListener('submit', (e) => {
+        // Initial check
+        authenticatedFetch('/api/initial-data')
+            .then(() => {
+                showMainContent();
+                fetchInitialData();
+            })
+            .catch(() => showLoginForm());
+
+        socket.on('connect', () => {
+            console.log('Connected to WebSocket');
+            showFeedback('Connected to server', 'success');
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from WebSocket');
+            showFeedback('Disconnected from server', 'error');
+        });
+
+        socket.on('tradingUpdate', (data) => {
+            updateTradingData(data);
+            console.log('Received trading update:', data);
+            if (data.recentTrades && data.recentTrades.length > 0) {
+                const mostRecentTrade = data.recentTrades[0];
+                console.log('Most recent trade:', mostRecentTrade);
+
+                const tradeToAdd = mostRecentTrade;
+
+                console.log('Trade to add:', tradeToAdd);
+                addTrade(tradeToAdd);
+            } else {
+                console.log('No recent trades in the update');
+            }
+        });
+
+        paramForm.addEventListener('submit', (e) => {
                 e.preventDefault();
+                if (readOnlyToggle.checked) {
+                    showFeedback('Cannot update parameters in read-only mode.', 'error');
+                    return;
+                }
                 const formData = new FormData(paramForm);
                 const params = {
                     SENTIMENT_BOUNDARIES: {
@@ -927,6 +1011,7 @@
 
             document.addEventListener('DOMContentLoaded', () => {
                 fetchRecentTrades();
+                toggleReadOnlyMode();
             });
 
             function showFeedback(message, type) {
@@ -938,6 +1023,5 @@
                 }, 5000);
             }
         </script>
-    </body>
-    
-    </html>
+</body>
+</html>

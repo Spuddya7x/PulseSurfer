@@ -16,6 +16,67 @@ dotenv.config();
 
 const app = express();
 
+// Settings functionality
+const SETTINGS_PATH = path.join(__dirname, 'settings.json');
+
+const DEFAULT_SETTINGS = {
+  SENTIMENT_BOUNDARIES: {
+    EXTREME_FEAR: 20,
+    FEAR: 40,
+    GREED: 60,
+    EXTREME_GREED: 80
+  },
+  SENTIMENT_MULTIPLIERS: {
+    EXTREME_FEAR: 0.5,
+    FEAR: 0.3,
+    GREED: 0.3,
+    EXTREME_GREED: 0.5
+  },
+  INTERVAL: 900000 // 15 minutes in milliseconds
+};
+
+function ensureSettingsFile() {
+  if (!fs.existsSync(SETTINGS_PATH)) {
+    console.log('settings.json not found. Creating with default values...');
+    try {
+      fs.writeFileSync(SETTINGS_PATH, JSON.stringify(DEFAULT_SETTINGS, null, 2));
+      console.log('settings.json created successfully.');
+    } catch (error) {
+      console.error('Error creating settings.json:', error);
+      process.exit(1);
+    }
+  }
+}
+
+function readSettings() {
+  ensureSettingsFile();
+  try {
+    const settingsData = fs.readFileSync(SETTINGS_PATH, 'utf8');
+    return JSON.parse(settingsData);
+  } catch (error) {
+    console.error('Error reading settings.json:', error);
+    return DEFAULT_SETTINGS;
+  }
+}
+
+function writeSettings(settings) {
+  try {
+    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
+    console.log('Settings updated successfully.');
+  } catch (error) {
+    console.error('Error writing settings.json:', error);
+  }
+}
+
+function updateSettings(newSettings) {
+  const currentSettings = readSettings();
+  const updatedSettings = { ...currentSettings, ...newSettings };
+  writeSettings(updatedSettings);
+  return updatedSettings;
+}
+
+let tradingParams = readSettings();
+
 // Middleware setup
 app.use(cors());
 app.use(express.json());
@@ -113,21 +174,6 @@ let initialData = null;
 const recentTrades = [];
 const MAX_RECENT_TRADES = 7;
 
-// Read settings from JSON file
-function readSettings() {
-  const settingsPath = path.join(__dirname, 'settings.json');
-  const settingsData = fs.readFileSync(settingsPath, 'utf8');
-  return JSON.parse(settingsData);
-}
-
-// Write settings to JSON file
-function writeSettings(settings) {
-  const settingsPath = path.join(__dirname, 'settings.json');
-  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-}
-
-let tradingParams = readSettings();
-
 function addRecentTrade(trade) {
   recentTrades.unshift(trade);
   if (recentTrades.length > MAX_RECENT_TRADES) {
@@ -155,8 +201,7 @@ app.get('/api/recent-trades', (req, res) => {
 
 app.post('/api/params', (req, res) => {
   const newParams = req.body;
-  tradingParams = { ...tradingParams, ...newParams };
-  writeSettings(tradingParams);
+  tradingParams = updateSettings(newParams);
   io.emit('paramsUpdated', tradingParams);
   paramUpdateEmitter.emit('paramsUpdated', tradingParams);
   res.json({ message: 'Parameters updated successfully', params: tradingParams });

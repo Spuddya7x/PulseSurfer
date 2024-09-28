@@ -2,7 +2,7 @@
   "name": "pulsesurfer",
   "version": "1.0.0",
   "description": "",
-  "main": "main.js",
+  "main": "surf.js",
   "keywords": [],
   "author": "SpuddyA7X",
   "license": "ISC",

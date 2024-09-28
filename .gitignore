@@ -6,3 +6,6 @@ node_modules/
 
 # Trading Data log
 trading_data.csv
+
+# User Settings
+settings.json
