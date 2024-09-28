@@ -78,13 +78,8 @@ npm install
 
   
 
-3. Set up your environment variables:
+3. Run the bot once with ```node surf```. This will generate you a .env file.
 
-```
-
-cp .env.example .env
-
-```
 
 Edit the `.env` file and fill in your:
 
