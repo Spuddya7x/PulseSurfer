@@ -476,7 +476,7 @@ async function swapTokensWithRetry(
 
       const quoteResponse = await getQuote(BASE_SWAP_URL, inputMint, outputMint, tradeAmountLamports, slippageBps);
 
-      const referralAccountPubkey = new PublicKey("7WGULgEo4Veqj6sCvA3VNxGgBf3EXJd8sW2XniBda3bJ");
+      const referralAccountPubkey = new PublicKey("DGQRoyxV4Pi7yLnsVr1sT9YaRWN9WtwwcAiu3cKJsV9p");
 
       const swapTransaction = await getFeeAccountAndSwapTransaction(
         referralAccountPubkey,
