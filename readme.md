@@ -1,10 +1,14 @@
 # PulseSurfer: Solana Fear and Greed Index Trader 🏄‍♂️🌊
 
-  
 
-[![BOP](./public/bop_icon.svg "Join our Discord community")](https://discord.gg/8gg2EAJg)
 
-Connect with us! [Join our Discord community](https://discord.gg/8gg2EAJg) to discuss PulseSurfer, get support, and stay updated on the latest developments.
+![GitHub last commit](https://img.shields.io/github/last-commit/SpuddyA7X/PulseSurfer)
+![GitHub issues](https://img.shields.io/github/issues/SpuddyA7X/PulseSurfer)
+![GitHub number of milestones](https://img.shields.io/github/milestones/all/SpuddyA7X/PulseSurfer)
+![GitHub stars](https://img.shields.io/github/stars/SpuddyA7X/PulseSurfer?style=social)
+[![Twitter Follow](https://img.shields.io/twitter/follow/spuddya7x?style=social)](https://twitter.com/spuddya7x)
+
+[Join our Discord community](https://discord.gg/H5MCsYjckc) to discuss PulseSurfer, get support, and stay updated on the latest developments.
 
 
 
@@ -72,13 +76,8 @@ npm install
 
   
 
-3. Set up your environment variables:
+3. Run the bot once with ```node surf```. This will generate you a .env file.
 
-```
-
-cp .env.example .env
-
-```
 
 Edit the `.env` file and fill in your:
 
