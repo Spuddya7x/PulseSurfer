@@ -21,16 +21,16 @@ const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 
 const DEFAULT_SETTINGS = {
   SENTIMENT_BOUNDARIES: {
-    EXTREME_FEAR: 20,
-    FEAR: 40,
-    GREED: 60,
-    EXTREME_GREED: 80
+    EXTREME_FEAR: 15,
+    FEAR: 35,
+    GREED: 65,
+    EXTREME_GREED: 85
   },
   SENTIMENT_MULTIPLIERS: {
-    EXTREME_FEAR: 0.5,
-    FEAR: 0.3,
-    GREED: 0.3,
-    EXTREME_GREED: 0.5
+    EXTREME_FEAR: 0.05,
+    FEAR: 0.03,
+    GREED: 0.03,
+    EXTREME_GREED: 0.05
   },
   INTERVAL: 900000 // 15 minutes in milliseconds
 };
