@@ -8,12 +8,10 @@
 ![GitHub stars](https://img.shields.io/github/stars/Spuddya7x/PulseSurfer?style=social)
 [![Twitter Follow](https://img.shields.io/twitter/follow/spuddya7x?style=social)](https://twitter.com/spuddya7x)
 
-[Join our Discord community](https://discord.gg/8gg2EAJg) to discuss PulseSurfer, get support, and stay updated on the latest developments.
+[Join our Discord community](https://discord.gg/H5MCsYjckc) to discuss PulseSurfer, get support, and stay updated on the latest developments.
 
 
 Connect with us to discuss PulseSurfer, get support, and stay updated on the latest developments.
-
-[![BOP](https://img.shields.io/badge/Join%20our%20Discord-blue?style=for-the-badge&logo=discord&logoColor=white&labelColor=blue)]([https://discord.gg/H5MCsYjckc])
 
 
 PulseSurfer is an automated trading bot that surfs the waves of market sentiment to trade SOL/USDC on the Solana blockchain. By leveraging the Fear and Greed Index, PulseSurfer aims to capitalize on market emotions and make informed trading decisions.
