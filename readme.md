@@ -3,9 +3,9 @@
 
 
 ![GitHub last commit](https://img.shields.io/github/last-commit/SpuddyA7X/PulseSurfer)
-![GitHub issues](https://img.shields.io/github/issues/Spuddya7x/PulseSurfer)
-![GitHub number of milestones](https://img.shields.io/github/milestones/all/Spuddya7x/PulseSurfer)
-![GitHub stars](https://img.shields.io/github/stars/Spuddya7x/PulseSurfer?style=social)
+![GitHub issues](https://img.shields.io/github/issues/SpuddyA7X/PulseSurfer)
+![GitHub number of milestones](https://img.shields.io/github/milestones/all/SpuddyA7X/PulseSurfer)
+![GitHub stars](https://img.shields.io/github/stars/SpuddyA7X/PulseSurfer?style=social)
 [![Twitter Follow](https://img.shields.io/twitter/follow/spuddya7x?style=social)](https://twitter.com/spuddya7x)
 
 [Join our Discord community](https://discord.gg/H5MCsYjckc) to discuss PulseSurfer, get support, and stay updated on the latest developments.
