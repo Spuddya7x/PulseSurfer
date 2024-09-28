@@ -11,8 +11,6 @@
 [Join our Discord community](https://discord.gg/H5MCsYjckc) to discuss PulseSurfer, get support, and stay updated on the latest developments.
 
 
-Connect with us to discuss PulseSurfer, get support, and stay updated on the latest developments.
-
 
 PulseSurfer is an automated trading bot that surfs the waves of market sentiment to trade SOL/USDC on the Solana blockchain. By leveraging the Fear and Greed Index, PulseSurfer aims to capitalize on market emotions and make informed trading decisions.
 
