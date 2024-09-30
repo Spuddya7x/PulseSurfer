@@ -5,11 +5,12 @@ const fs = require('fs');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const cliProgress = require('cli-progress');
-const { Keypair, Connection, PublicKey, LAMPORTS_PER_SOL, VersionedTransaction } = require('@solana/web3.js');
+const { Keypair, Connection, PublicKey, LAMPORTS_PER_SOL, VersionedTransaction, TransactionMessage, SystemProgram } = require('@solana/web3.js');
 const { getAssociatedTokenAddress } = require("@solana/spl-token");
 const { Wallet } = require('@project-serum/anchor');
 const fetch = require('cross-fetch');
 const os = require('os');
+const WebSocket = require('ws');
 
 // Load environment variables
 function setupEnvFile() {
@@ -51,6 +52,20 @@ const SOL = {
   FULL_NAME: "solana"
 };
 
+const JitoBlockEngine = "https://mainnet.block-engine.jito.wtf/api/v1/bundles";
+const TIP_ACCOUNTS = [
+  "96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5",
+  "HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe",
+  "Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY",
+  "ADaUMid9yfUytqMBgopwjb2DTLSokTSzL1zt6iGPaS49",
+  "DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh",
+  "ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt",
+  "DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL",
+  "3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT"
+];
+const getRandomTipAccount = () =>
+  TIP_ACCOUNTS[Math.floor(Math.random() * TIP_ACCOUNTS.length)];
+
 let { SENTIMENT_BOUNDARIES, SENTIMENT_MULTIPLIERS, INTERVAL } = readSettings();
 const slippageBps = 200; // 5% slippage
 
@@ -61,6 +76,7 @@ const BASE_SWAP_URL = "https://quote-api.jup.ag/v6";
 let position;
 let keypair, connection;
 let wallet;
+let maxJitoTip = 0.00005,
 
 updateTradingScript = handleParameterUpdate;
 
@@ -134,15 +150,7 @@ async function loadEnvironment() {
   }
 
   try {
-    let privateKey;
-    if (typeof bs58.decode === 'function') {
-      privateKey = bs58.decode(process.env.PRIVATE_KEY);
-    } else if (typeof bs58.default === 'object' && typeof bs58.default.decode === 'function') {
-      privateKey = bs58.default.decode(process.env.PRIVATE_KEY);
-    } else {
-      throw new Error('bs58 decode function not found');
-    }
-
+    const privateKey = bs58.default.decode(process.env.PRIVATE_KEY);
     keypair = Keypair.fromSecretKey(new Uint8Array(privateKey));
     connection = new Connection(process.env.RPC_URL, 'confirmed');
     wallet = new Wallet(keypair);
@@ -325,7 +333,6 @@ async function getQuote(BASE_SWAP_URL, inputMint, outputMint, tradeAmountLamport
     platformFeeBps: '25',
     maxAutoSlippageBps: '500', // Maximum 5% slippage
     autoSlippage: 'true',
-    onlyDirectRoutes: 'true',
   });
 
   const quoteUrl = `${BASE_SWAP_URL}/quote?${params.toString()}`;
@@ -366,8 +373,8 @@ async function getFeeAccountAndSwapTransaction(
       userPublicKey: wallet.publicKey.toString(),
       wrapAndUnwrapSol: true,
       feeAccount: feeAccount.toString(),
-      dynamicComputeUnitLimit: true,
-      prioritizationFeeLamports: 'auto'
+      dynamicComputeUnitLimit: true
+      //prioritizationFeeLamports: 'auto'
     };
 
     const response = await fetch("https://quote-api.jup.ag/v6/swap", {
@@ -391,36 +398,6 @@ async function getFeeAccountAndSwapTransaction(
   }
 }
 
-async function executeAndConfirmTransaction(connection, transaction, wallet) {
-  transaction.sign([wallet.payer]);
-  const rawTransaction = transaction.serialize();
-  const txId = await connection.sendRawTransaction(rawTransaction, {
-    skipPreflight: true,
-    maxRetries: 0
-  });
-
-  console.log(`Transaction sent: ${txId}`);
-
-  try {
-    let latestBlockHash = await connection.getLatestBlockhash('confirmed');
-    const confirmation = await connection.confirmTransaction({
-      blockhash: latestBlockHash.blockhash,
-      lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-      signature: txId
-    }, 'confirmed');
-
-    if (confirmation.value.err) {
-      throw new Error(`Transaction failed: ${confirmation.value.err}`);
-    }
-
-    //console.log(`Transaction confirmed`);
-    return txId;
-  } catch (error) {
-    console.error(`Transaction confirmation failed: ${error.message}`);
-    throw error; // Propagate the error to be caught in swapTokensWithRetry
-  }
-}
-
 async function swapTokensWithRetry(
   connection,
   wallet,
@@ -429,17 +406,14 @@ async function swapTokensWithRetry(
   USDC,
   SOL
 ) {
-  const MAX_RETRIES = 3; // Limit the number of retries
-  const RETRY_DELAY = 5000; // 5 seconds delay between retries
-  const MAX_BALANCE_CHECK_ATTEMPTS = 5;
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY = 5000;
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       console.log(`Swap attempt ${attempt + 1} of ${MAX_RETRIES}`);
 
       const latestPrice = await fetchPrice(BASE_PRICE_URL, SOL);
-
-      // Get fresh "Pre-swap Balances"
       const preSwapBalances = await updatePortfolioBalances();
 
       if (sentiment === "NEUTRAL") {
@@ -476,10 +450,8 @@ async function swapTokensWithRetry(
 
       const quoteResponse = await getQuote(BASE_SWAP_URL, inputMint, outputMint, tradeAmountLamports, slippageBps);
 
-      const referralAccountPubkey = new PublicKey("DGQRoyxV4Pi7yLnsVr1sT9YaRWN9WtwwcAiu3cKJsV9p");
-
       const swapTransaction = await getFeeAccountAndSwapTransaction(
-        referralAccountPubkey,
+        new PublicKey("DGQRoyxV4Pi7yLnsVr1sT9YaRWN9WtwwcAiu3cKJsV9p"),
         new PublicKey(inputMint),
         quoteResponse,
         wallet
@@ -492,50 +464,29 @@ async function swapTokensWithRetry(
       const swapTransactionBuf = Buffer.from(swapTransaction, 'base64');
       const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
 
-      const txId = await executeAndConfirmTransaction(connection, transaction, wallet);
+      // Use Jito bundling for the swap transaction
+      const jitoBundleResult = await handleJitoBundle(transaction, wallet);
+      console.log("Jito bundle sent, awaiting confirmation...");
 
-      console.log(`Swap transaction confirmed. Waiting 2s before checking balances...`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Poll for balance changes
+      const { solChange, usdcChange, newBalances } = await pollForBalanceChanges(wallet, preSwapBalances);
 
-      // Get post-swap balances with retries
-      let postSwapBalances;
-      let solChange;
-      let usdcChange;
-      let balanceCheckAttempt = 0;
-
-      while (balanceCheckAttempt < MAX_BALANCE_CHECK_ATTEMPTS) {
-        postSwapBalances = await updatePortfolioBalances();
-        solChange = postSwapBalances.solBalance - preSwapBalances.solBalance;
-        usdcChange = postSwapBalances.usdcBalance - preSwapBalances.usdcBalance;
-
-        if (Math.abs(solChange) > 0 && Math.abs(usdcChange) > 0) {
-          break; // Both changes are non-zero, proceed with calculations
-        }
-
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        balanceCheckAttempt++;
-      }
-
-      if (Math.abs(solChange) === 0 || Math.abs(usdcChange) === 0) {
-        throw new Error("Unable to detect balance changes after multiple attempts");
-      }
-
-      // Calculate the true price based on the actual amounts swapped
       const truePrice = Math.abs(usdcChange) / Math.abs(solChange);
 
       console.log(`Swap successful on attempt ${attempt + 1}`);
-      console.log(`Transaction Details: https://solscan.io/tx/${txId}`);
+      console.log(`Transaction Details: https://solscan.io/tx/${jitoBundleResult.swapTxSignature}`);
       console.log(`True swap price: $${truePrice.toFixed(4)}`);
       console.log(`SOL change: ${solChange.toFixed(SOL.DECIMALS)} ${isBuying ? 'bought' : 'sold'}`);
       console.log(`USDC change: ${usdcChange.toFixed(USDC.DECIMALS)}`);
 
       return {
-        txId,
+        txId: jitoBundleResult.swapTxSignature,
         price: truePrice,
         solChange,
         usdcChange,
         oldBalances: preSwapBalances,
-        newBalances: postSwapBalances
+        newBalances: newBalances,
+        jitoBundleResult
       };
 
     } catch (error) {
@@ -549,6 +500,308 @@ async function swapTokensWithRetry(
       }
     }
   }
+}
+
+async function jitoTipCheck() {
+  const JitoTipWS = 'ws://bundles-api-rest.jito.wtf/api/v1/bundles/tip_stream';
+  const tipws = new WebSocket(JitoTipWS);
+
+  return new Promise((resolve, reject) => {
+    tipws.on('open', function open() {
+      console.log('WebSocket connection opened');
+    });
+
+    tipws.on('message', function incoming(data) {
+      const str = data.toString();
+      try {
+        const json = JSON.parse(str);
+        const emaPercentile50th = json[0].ema_landed_tips_50th_percentile;
+        console.log(`50th Percentile: ${emaPercentile50th.toFixed(9)}`);
+        if (emaPercentile50th !== null) {
+          tipws.close();
+          resolve(emaPercentile50th);
+        } else {
+          reject(new Error('50th percentile is null'));
+        }
+      } catch (err) {
+        reject(err);
+      }
+    });
+
+    tipws.on('error', function error(err) {
+      console.error('WebSocket error:', err);
+      reject(err);
+    });
+
+    // Set a timeout
+    setTimeout(() => {
+      tipws.close();
+      reject(new Error('Timeout'));
+    }, 21000);
+  });
+}
+
+async function handleJitoBundle(transaction, wallet) {
+  console.log("Starting Jito bundle process...");
+
+  // Check if the swap transaction is signed
+  if (transaction.signatures[0].every(byte => byte === 0)) {
+    console.log("Swap transaction is not signed. Signing now...");
+    try {
+      transaction.sign([wallet.payer]);
+      console.log("Swap transaction signed successfully.");
+    } catch (error) {
+      console.error("Error signing swap transaction:", error);
+      throw new Error("Failed to sign swap transaction");
+    }
+  } else {
+    console.log("Swap transaction is already signed.");
+  }
+
+  let tipValueInSol;
+  try {
+    tipValueInSol = await jitoTipCheck();
+    console.log(`Jito tip check completed. Tip value: ${tipValueInSol} SOL`);
+  } catch (err) {
+    console.error("Error in Jito tip check:", err);
+    tipValueInSol = 0.00005; // Default value
+    console.log(`Using default tip value: ${tipValueInSol} SOL`);
+  }
+  if (tipValueInSol > maxJitoTip) {
+    tipValueInSol = maxJitoTip;
+    console.log(`Tip value capped at max: ${tipValueInSol} SOL`);
+  }
+  const tipValueInLamports = tipValueInSol * 1_000_000_000;
+  const roundedTipValueInLamports = Math.round(tipValueInLamports);
+
+  // Limit to 9 digits and add 10% to edge out competition
+  const limitedTipValueInLamports = Math.floor(
+    Number(roundedTipValueInLamports.toFixed(9)) * 1.1
+  );
+
+  try {
+    const tipAccount = new PublicKey(getRandomTipAccount());
+    console.log(`Selected tip account: ${tipAccount.toString()}`);
+    const tipIxn = SystemProgram.transfer({
+      fromPubkey: wallet.publicKey,
+      toPubkey: tipAccount,
+      lamports: limitedTipValueInLamports
+    });
+
+    console.log(`Jito Fee: ${limitedTipValueInLamports / Math.pow(10, 9)} SOL`);
+
+    const resp = await connection.getLatestBlockhash("confirmed");
+    console.log(`Got latest blockhash: ${resp.blockhash}`);
+
+    const messageSub = new TransactionMessage({
+      payerKey: wallet.publicKey,
+      recentBlockhash: resp.blockhash,
+      instructions: [tipIxn]
+    }).compileToV0Message();
+
+    const txSub = new VersionedTransaction(messageSub);
+    txSub.sign([wallet.payer]);
+    console.log("Tip transaction created and signed");
+
+    // Log the details of both transactions
+    console.log("Swap transaction details:", {
+      version: transaction.version,
+      signatures: transaction.signatures.map(s => bs58.default.encode(s)),
+    });
+    console.log("Tip transaction details:", {
+      version: txSub.version,
+      signatures: txSub.signatures.map(s => bs58.default.encode(s)),
+    });
+
+    // Combine the swap transaction and the tip transaction
+    const bundletoSend = [transaction, txSub];
+    console.log("Bundle created, sending to Jito...");
+    const jitoBundleResult = await sendJitoBundle(bundletoSend);
+    console.log("Jito bundle sent successfully");
+
+    // Extract transaction signatures
+    const swapTxSignature = bs58.default.encode(transaction.signatures[0]);
+    const tipTxSignature = bs58.default.encode(txSub.signatures[0]);
+
+    console.log("Swap transaction signature:", swapTxSignature);
+    console.log("Tip transaction signature:", tipTxSignature);
+
+    // Wait for transactions to be confirmed and fetch receipts
+    const swapReceipt = await getTransactionReceipt(swapTxSignature);
+    const tipReceipt = await getTransactionReceipt(tipTxSignature);
+
+    return {
+      jitoBundleResult,
+      swapTxSignature,
+      tipTxSignature,
+      swapReceipt,
+      tipReceipt
+    };
+  } catch (error) {
+    console.error("\nBundle Construction Error: ", error);
+    throw error;
+  }
+}
+
+async function sendJitoBundle(bundletoSend) {
+  let encodedBundle;
+  try {
+    encodedBundle = bundletoSend.map((tx, index) => {
+      if (!(tx instanceof VersionedTransaction)) {
+        throw new Error(`Transaction at index ${index} is not a VersionedTransaction`);
+      }
+      const serialized = tx.serialize();
+      console.log(`Transaction ${index} serialized length: ${serialized.length}`);
+      const encoded = bs58.default.encode(serialized);
+      console.log(`Transaction ${index} encoded length: ${encoded.length}`);
+      return encoded;
+    });
+  } catch (error) {
+    console.error("Error encoding transactions:", error);
+    throw error;
+  }
+
+  const data = {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "sendBundle",
+    params: [encodedBundle]
+  };
+
+  console.log("Sending bundle to Jito Block Engine...");
+  console.log("Request payload:", JSON.stringify(data, null, 2));
+
+  let response;
+  const maxRetries = 5;
+  for (let i = 0; i <= maxRetries; i++) {
+    try {
+      response = await fetch(JitoBlockEngine, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(data)
+      });
+
+      if (response.ok) {
+        console.log("Received OK response from Jito Block Engine");
+        break;
+      }
+
+      const responseText = await response.text();
+      console.log(`Response status: ${response.status}`);
+      console.log("Response body:", responseText);
+
+      if (response.status === 400) {
+        console.error("Bad Request Error. Response details:", responseText);
+        throw new Error(`Bad Request: ${responseText}`);
+      }
+
+      if (response.status === 429) {
+        const waitTime = Math.min(500 * Math.pow(2, i), 5000);
+        const jitter = Math.random() * 0.3 * waitTime;
+        console.log(`Rate limited. Retrying in ${waitTime + jitter}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, waitTime + jitter));
+      } else {
+        throw new Error(`Unexpected response status: ${response.status}`);
+      }
+    } catch (error) {
+      console.error(`Error on attempt ${i + 1}:`, error);
+      if (i === maxRetries) {
+        console.error("Max retries exceeded");
+        throw error;
+      }
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to send bundle after ${maxRetries} attempts`);
+  }
+
+  const responseText = await response.text();
+  console.log("Raw response from Jito Block Engine:", responseText);
+
+  let responseData;
+  try {
+    responseData = JSON.parse(responseText);
+  } catch (error) {
+    console.error("Error parsing Jito response:", error);
+    throw new Error("Failed to parse Jito response");
+  }
+
+  if (responseData.error) {
+    console.error("Jito Block Engine returned an error:", responseData.error);
+    throw new Error(`Jito error: ${responseData.error.message}`);
+  }
+
+  const result = responseData.result;
+  if (!result) {
+    console.error("No result in Jito response");
+    throw new Error("No result in Jito response");
+  }
+
+  const url = `https://explorer.jito.wtf/bundle/${result}`;
+  console.log(`\nJito Bundle Result: ${url}`);
+
+  return result;
+}
+
+async function pollForBalanceChanges(wallet, preSwapBalances, maxAttempts = 30, interval = 2000) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const currentSolBalance = await getTokenBalance(connection, wallet.publicKey.toString(), SOL.ADDRESS);
+    const currentUsdcBalance = await getTokenBalance(connection, wallet.publicKey.toString(), USDC.ADDRESS);
+
+    const solChange = currentSolBalance - preSwapBalances.solBalance;
+    const usdcChange = currentUsdcBalance - preSwapBalances.usdcBalance;
+
+    if (Math.abs(solChange) > 0 && Math.abs(usdcChange) > 0) {
+      console.log(`Balance changes detected after ${attempt + 1} attempts`);
+      return {
+        solChange,
+        usdcChange,
+        newBalances: { solBalance: currentSolBalance, usdcBalance: currentUsdcBalance }
+      };
+    }
+
+    console.log(`Attempt ${attempt + 1}: No balance changes detected. Waiting ${interval / 1000} seconds...`);
+    await new Promise(resolve => setTimeout(resolve, interval));
+  }
+
+  throw new Error("Failed to detect balance changes after maximum attempts");
+}
+
+async function getTransactionReceipt(signature) {
+  const MAX_RETRIES = 30;
+  const RETRY_DELAY = 1000; // 1 second
+
+  for (let i = 0; i < MAX_RETRIES; i++) {
+    try {
+      const confirmation = await connection.confirmTransaction(signature);
+      if (confirmation.value.err) {
+        throw new Error(`Transaction failed: ${confirmation.value.err}`);
+      }
+
+      const txInfo = await connection.getTransaction(signature, {
+        maxSupportedTransactionVersion: 0,
+      });
+
+      if (txInfo) {
+        console.log(`Transaction ${signature} confirmed`);
+        return {
+          signature,
+          slot: txInfo.slot,
+          confirmations: txInfo.confirmations,
+          err: txInfo.meta.err,
+        };
+      }
+    } catch (error) {
+      console.log(`Attempt ${i + 1}: Waiting for transaction confirmation...`);
+    }
+
+    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+  }
+
+  throw new Error(`Failed to get receipt for transaction ${signature} after ${MAX_RETRIES} attempts`);
 }
 
 function updatePositionFromSwap(swapResult, sentiment) {
@@ -647,7 +900,7 @@ async function main() {
     console.log(`Average Prices: Entry: $${enhancedStats.averagePrices.entry}, Sell: $${enhancedStats.averagePrices.sell}`);
     console.log("------------------------------------\n");
 
-    console.log(txId);
+    console.log(`Jito Bundle ID: ${txId}`);
 
     let tradingData = {
       timestamp,
@@ -713,13 +966,13 @@ async function initialize() {
   const { solBalance, usdcBalance } = await checkBalance();
   const currentPrice = await fetchPrice(BASE_PRICE_URL, SOL);
   position = new Position(solBalance, usdcBalance, currentPrice);
- 
+
   const settings = readSettings();
   SENTIMENT_BOUNDARIES = settings.SENTIMENT_BOUNDARIES;
   SENTIMENT_MULTIPLIERS = settings.SENTIMENT_MULTIPLIERS;
   INTERVAL = settings.INTERVAL;
 
-  console.log("Initialization complete. Starting trading operations.");
+  console.log("Initialization complete. Starting trading operations with Jito integration.");
   console.log(`Initial position: ${solBalance.toFixed(SOL.DECIMALS)} ${SOL.NAME}, ${usdcBalance.toFixed(USDC.DECIMALS)} USDC`);
   console.log(`Initial SOL price: $${currentPrice.toFixed(2)}`);
   console.log(`Initial portfolio value: $${position.getCurrentValue(currentPrice).toFixed(2)}`);
