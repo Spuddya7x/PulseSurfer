@@ -9,11 +9,14 @@ class Position {
     this.trades = [];
     this.isInitialized = true;
 
-    // Track traded amounts separately
+    // Track bought and sold amounts separately
     this.totalSolBought = 0;
     this.totalUsdcSpent = 0;
     this.totalSolSold = 0;
     this.totalUsdcReceived = 0;
+
+    // Track net traded position
+    this.netSolTraded = 0;
 
     // Enhanced statistics
     this.startTime = Date.now();
@@ -45,9 +48,11 @@ class Position {
     if (tradeType === 'buy') {
       this.totalSolBought += solAmount;
       this.totalUsdcSpent += usdcAmount;
+      this.netSolTraded += solAmount;
     } else {
       this.totalSolSold += solAmount;
       this.totalUsdcReceived += usdcAmount;
+      this.netSolTraded -= solAmount;
     }
 
     // Update total volume
@@ -63,17 +68,25 @@ class Position {
     return this.totalSolSold > 0 ? this.totalUsdcReceived / this.totalSolSold : 0;
   }
 
-  getRealizedPnL() {
-    return this.totalUsdcReceived - this.totalUsdcSpent;
-  }
+  getNetChange(currentPrice) {
+    console.log('getNetChange input:', { currentPrice, netSolTraded: this.netSolTraded });
 
-  getUnrealizedPnL(currentPrice) {
-    const currentSolValue = (this.totalSolBought - this.totalSolSold) * currentPrice;
-    return currentSolValue - (this.totalUsdcSpent - this.totalUsdcReceived);
-  }
+    const currentValueOfTradedSol = this.netSolTraded * currentPrice;
+    const netUsdcChange = this.totalUsdcReceived - this.totalUsdcSpent;
 
-  getTotalPnL(currentPrice) {
-    return this.getRealizedPnL() + this.getUnrealizedPnL(currentPrice);
+    console.log('getNetChange calculation:', {
+      currentValueOfTradedSol,
+      netUsdcChange,
+      totalUsdcReceived: this.totalUsdcReceived,
+      totalUsdcSpent: this.totalUsdcSpent
+    });
+
+    const netChange = currentValueOfTradedSol + netUsdcChange;
+
+    console.log('getNetChange result:', netChange);
+
+    // If netChange is NaN, return 0 or some default value
+    return isNaN(netChange) ? 0 : netChange;
   }
 
   getCurrentValue(currentPrice) {
@@ -89,11 +102,33 @@ class Position {
     return ((currentPrice - this.initialPrice) / this.initialPrice) * 100;
   }
 
+  getTradedSolPerformance(currentPrice) {
+    const initialValueOfTradedSol = this.totalUsdcSpent - this.totalUsdcReceived;
+    const currentValueOfTradedSol = this.netSolTraded * currentPrice;
+    return currentValueOfTradedSol - initialValueOfTradedSol;
+  }
+
+  getTradedSolPercentageChange(currentPrice) {
+    const initialValueOfTradedSol = this.totalUsdcSpent - this.totalUsdcReceived;
+    const currentValueOfTradedSol = this.netSolTraded * currentPrice;
+    if (initialValueOfTradedSol === 0) return 0;
+    return ((currentValueOfTradedSol - initialValueOfTradedSol) / Math.abs(initialValueOfTradedSol)) * 100;
+  }
+
   getEnhancedStatistics(currentPrice) {
     const currentPortfolioValue = this.getCurrentValue(currentPrice);
     const portfolioChange = currentPortfolioValue - this.initialValue;
     const totalRuntime = (Date.now() - this.startTime) / 1000 / 60 / 60; // in hours
     const totalVolumeUsd = this.totalVolumeUsdc + (this.totalVolumeSol * currentPrice);
+    const netChange = this.getNetChange(currentPrice);
+
+    console.log('getEnhancedStatistics:', {
+      currentPortfolioValue,
+      portfolioChange,
+      totalRuntime,
+      totalVolumeUsd,
+      netChange
+    });
 
     return {
       totalRuntime: totalRuntime.toFixed(2),
@@ -109,11 +144,8 @@ class Position {
         current: currentPrice.toFixed(2),
         percentageChange: this.getSolPricePercentageChange(currentPrice).toFixed(2)
       },
-      pnl: {
-        realized: this.getRealizedPnL().toFixed(2),
-        unrealized: this.getUnrealizedPnL(currentPrice).toFixed(2),
-        total: this.getTotalPnL(currentPrice).toFixed(2)
-      },
+      netChange: netChange.toFixed(2),
+      netSolTraded: this.netSolTraded.toFixed(6),
       totalVolume: {
         sol: this.totalVolumeSol.toFixed(6),
         usdc: this.totalVolumeUsdc.toFixed(2),
@@ -123,12 +155,12 @@ class Position {
         sol: {
           initial: this.initialSolBalance.toFixed(6),
           current: this.solBalance.toFixed(6),
-          traded: (this.totalSolBought - this.totalSolSold).toFixed(6)
+          net: this.netSolTraded.toFixed(6)
         },
         usdc: {
           initial: this.initialUsdcBalance.toFixed(2),
           current: this.usdcBalance.toFixed(2),
-          traded: (this.totalUsdcSpent - this.totalUsdcReceived).toFixed(2)
+          net: (this.totalUsdcReceived - this.totalUsdcSpent).toFixed(2)
         }
       },
       averagePrices: {

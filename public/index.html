@@ -724,48 +724,38 @@
         readOnlyToggle.addEventListener('change', toggleReadOnlyMode);
 
         function updateTradingData(data) {
-            tradingDataElement.innerHTML = `
+                tradingDataElement.innerHTML = `
                 <div class="data-item">
                     <span class="data-label">Timestamp:</span>
                     <span class="data-value">${data.timestamp || 'N/A'}</span>
                 </div>
                 <div class="data-item">
-                    <span class="data-label">PNL Summary:</span>
-                    <div class="data-value pnl-summary" style="display: flex; justify-content: space-between; gap: 10px;">
-                        <span style="flex: 1; padding: 5px; border: 1px solid var(--solana-purple); border-radius: 4px; text-align: center;">
-                            Realized: $${data.realizedPnL || '0.00000'}
-                        </span>
-                        <span style="flex: 1; padding: 5px; border: 1px solid var(--solana-purple); border-radius: 4px; text-align: center;">
-                            Avg Buy: $${data.averageEntryPrice || 'N/A'}
-                        </span>
-                        <span style="flex: 1; padding: 5px; border: 1px solid var(--solana-purple); border-radius: 4px; text-align: center;">
-                            Avg Sell: $${data.averageSellPrice || 'N/A'}
-                        </span>
-                    </div>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">Total P&L:</span>
-                    <span class="data-value highlight">$${data.totalPnL || '0.00000'}</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">Unrealized P&L:</span>
-                    <span class="data-value">$${data.unrealizedPnL || '0.00000'}</span>
+                    <span class="data-label">Net Change:</span>
+                    <span class="data-value highlight">$${data.netChange || '0.00'}</span>
                 </div>
                 <div class="data-item">
                     <span class="data-label">Current SOL Price:</span>
                     <span class="data-value">$${data.price || 'N/A'}</span>
                 </div>
                 <div class="data-item">
-                    <span class="data-label">Total Portfolio Balance:</span>
+                    <span class="data-label">Total Portfolio Value:</span>
                     <span class="data-value">$${data.portfolioValue || 'N/A'}</span>
                 </div>
                 <div class="data-item">
-                    <span class="data-label">User SOL Balance:</span>
+                    <span class="data-label">SOL Balance:</span>
                     <span class="data-value">${data.solBalance || 'N/A'} SOL</span>
                 </div>
                 <div class="data-item">
-                    <span class="data-label">User USDC Balance:</span>
+                    <span class="data-label">USDC Balance:</span>
                     <span class="data-value">${data.usdcBalance || 'N/A'} USDC</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">Average Entry Price:</span>
+                    <span class="data-value">$${data.averageEntryPrice || 'N/A'}</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">Average Sell Price:</span>
+                    <span class="data-value">$${data.averageSellPrice || 'N/A'}</span>
                 </div>
                 <div class="data-item">
                     <span class="data-label">Fear & Greed Index:</span>
@@ -773,8 +763,8 @@
                 </div>
             `;
 
-            updateFGI(data.fearGreedIndex);
-        }
+                updateFGI(data.fearGreedIndex);
+            }
 
         function updateFGI(value) {
             fgiValueElement.textContent = value;

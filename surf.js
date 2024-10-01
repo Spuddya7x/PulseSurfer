@@ -470,6 +470,10 @@ async function swapTokensWithRetry(
       // Use Jito bundling for the swap transaction
       const jitoBundleResult = await handleJitoBundle(transaction, wallet);
       console.log("Jito bundle sent, awaiting confirmation...");
+      if (jitoBundleResult === null) {
+        console.log("Jito bundle failed. Retrying with fresh data...");
+        continue; // This will start a new iteration of the loop with fresh data
+      }
 
       // Poll for balance changes
       const { solChange, usdcChange, newBalances } = await pollForBalanceChanges(wallet, preSwapBalances);
@@ -599,24 +603,44 @@ async function handleJitoBundle(transaction, wallet) {
 
     // Combine the swap transaction and the tip transaction
     const bundletoSend = [transaction, txSub];
-    const jitoBundleResult = await sendJitoBundle(bundletoSend);
-    console.log("Jito Bundle sent successfully");
 
-    // Extract transaction signatures
-    const swapTxSignature = bs58.default.encode(transaction.signatures[0]);
-    const tipTxSignature = bs58.default.encode(txSub.signatures[0]);
+    let jitoBundleResult;
+    let swapTxSignature;
+    let tipTxSignature;
+    let swapReceipt;
+    let tipReceipt;
 
-    // Wait for transactions to be confirmed and fetch receipts
-    const swapReceipt = await getTransactionReceipt(swapTxSignature);
-    const tipReceipt = await getTransactionReceipt(tipTxSignature);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      jitoBundleResult = await sendJitoBundle(bundletoSend);
+      console.log(`Jito Bundle sent successfully (Attempt ${attempt + 1})`);
 
-    return {
-      jitoBundleResult,
-      swapTxSignature,
-      tipTxSignature,
-      swapReceipt,
-      tipReceipt
-    };
+      // Extract transaction signatures
+      swapTxSignature = bs58.default.encode(transaction.signatures[0]);
+      tipTxSignature = bs58.default.encode(txSub.signatures[0]);
+
+      // Wait for transactions to be confirmed and fetch receipts
+      try {
+        [swapReceipt, tipReceipt] = await Promise.all([
+          getTransactionReceipt(swapTxSignature),
+          getTransactionReceipt(tipTxSignature)
+        ]);
+
+        console.log("Transactions confirmed successfully");
+        return {
+          jitoBundleResult,
+          swapTxSignature,
+          tipTxSignature,
+          swapReceipt,
+          tipReceipt
+        };
+      } catch (error) {
+        console.log(`Attempt ${attempt + 1} failed: ${error.message}`);
+        if (attempt === 2) {
+          console.log("Max attempts reached. Initiating new trade...");
+          return null; // Signal to initiate a new trade
+        }
+      }
+    }
   } catch (error) {
     console.error("\nBundle Construction Error: ", error);
     throw error;
@@ -746,7 +770,7 @@ async function pollForBalanceChanges(wallet, preSwapBalances, maxAttempts = 30, 
 }
 
 async function getTransactionReceipt(signature) {
-  const MAX_RETRIES = 30;
+  const MAX_RETRIES = 3; // 3 attempts
   const RETRY_DELAY = 1000; // 1 second
 
   for (let i = 0; i < MAX_RETRIES; i++) {
@@ -809,14 +833,19 @@ function updatePositionFromSwap(swapResult, sentiment) {
 }
 
 function logPositionUpdate(currentPrice) {
+  const enhancedStats = position.getEnhancedStatistics(currentPrice);
+
   console.log("\n--- Current Position ---");
   console.log(`SOL Balance: ${position.solBalance.toFixed(SOL.DECIMALS)} SOL`);
   console.log(`USDC Balance: ${position.usdcBalance.toFixed(USDC.DECIMALS)} USDC`);
-  console.log(`Average Entry Price: $${position.getAverageEntryPrice().toFixed(2)}`);
-  console.log(`Average Sell Price: $${position.getAverageSellPrice().toFixed(2)}`);
-  console.log(`Unrealized P&L: $${position.getUnrealizedPnL(currentPrice).toFixed(2)}`);
-  console.log(`Realized P&L: $${position.getRealizedPnL().toFixed(2)}`);
-  console.log(`Total P&L: $${position.getTotalPnL(currentPrice).toFixed(2)}`);
+  console.log(`Average Entry Price: $${enhancedStats.averagePrices.entry}`);
+  console.log(`Average Sell Price: $${enhancedStats.averagePrices.sell}`);
+  console.log(`Current SOL Price: $${currentPrice.toFixed(2)}`);
+  console.log(`Initial Portfolio Value: $${enhancedStats.portfolioValue.initial}`);
+  console.log(`Current Portfolio Value: $${enhancedStats.portfolioValue.current}`);
+  console.log(`Net Change: $${enhancedStats.netChange}`);
+  console.log(`Portfolio Change: ${enhancedStats.portfolioValue.percentageChange}%`);
+  console.log(`Total Volume: ${enhancedStats.totalVolume.sol} SOL / ${enhancedStats.totalVolume.usdc} USDC`);
   console.log("------------------------\n");
 }
 
@@ -869,7 +898,7 @@ async function main() {
     console.log(`Total Cycles: ${enhancedStats.totalCycles}`);
     console.log(`Portfolio Value: $${enhancedStats.portfolioValue.initial} -> $${enhancedStats.portfolioValue.current} (${enhancedStats.portfolioValue.change >= 0 ? '+' : ''}${enhancedStats.portfolioValue.change}) (${enhancedStats.portfolioValue.percentageChange}%)`);
     console.log(`SOL Price: $${enhancedStats.solPrice.initial} -> $${enhancedStats.solPrice.current} (${enhancedStats.solPrice.percentageChange}%)`);
-    console.log(`PnL: Realized: $${enhancedStats.pnl.realized}, Unrealized: $${enhancedStats.pnl.unrealized}, Total: $${enhancedStats.pnl.total}`);
+    console.log(`Net Change: $${enhancedStats.netChange}`);
     console.log(`Total Volume: ${enhancedStats.totalVolume.sol} SOL / ${enhancedStats.totalVolume.usdc} USDC ($${enhancedStats.totalVolume.usd})`);
     console.log(`Balances: SOL: ${enhancedStats.balances.sol.initial} -> ${enhancedStats.balances.sol.current}, USDC: ${enhancedStats.balances.usdc.initial} -> ${enhancedStats.balances.usdc.current}`);
     console.log(`Average Prices: Entry: $${enhancedStats.averagePrices.entry}, Sell: $${enhancedStats.averagePrices.sell}`);
@@ -885,11 +914,9 @@ async function main() {
       usdcBalance: position.usdcBalance,
       solBalance: position.solBalance,
       portfolioValue: parseFloat(enhancedStats.portfolioValue.current),
-      realizedPnL: parseFloat(enhancedStats.pnl.realized),
-      unrealizedPnL: parseFloat(enhancedStats.pnl.unrealized),
-      totalPnL: parseFloat(enhancedStats.pnl.total),
-      averageEntryPrice: parseFloat(enhancedStats.averagePrices.entry) || 0,
-      averageSellPrice: parseFloat(enhancedStats.averagePrices.sell) || 0,
+      netChange: parseFloat(enhancedStats.netChange),
+      averageEntryPrice: parseFloat(enhancedStats.averagePrices.entry),
+      averageSellPrice: parseFloat(enhancedStats.averagePrices.sell),
       txId
     };
 
@@ -960,9 +987,7 @@ async function initialize() {
     usdcBalance: position.usdcBalance,
     solBalance: position.solBalance,
     portfolioValue: position.getCurrentValue(currentPrice),
-    realizedPnL: position.getRealizedPnL(),
-    unrealizedPnL: position.getUnrealizedPnL(currentPrice),
-    totalPnL: position.getTotalPnL(currentPrice),
+    netChange: position.getNetChange(currentPrice),
     averageEntryPrice: position.getAverageEntryPrice(),
     averageSellPrice: position.getAverageSellPrice()
   };
