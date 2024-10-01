@@ -32,7 +32,8 @@ const DEFAULT_SETTINGS = {
     GREED: 0.03,
     EXTREME_GREED: 0.05
   },
-  INTERVAL: 900000 // 15 minutes in milliseconds
+  INTERVAL: 900000, // Do not edit this
+  DEVELOPER_TIP_PERCENTAGE: 0 // In percent, 0 = no tip. This is added to the 0.05% fixed fee.
 };
 
 function ensureSettingsFile() {
@@ -71,6 +72,10 @@ function writeSettings(settings) {
 function updateSettings(newSettings) {
   const currentSettings = readSettings();
   const updatedSettings = { ...currentSettings, ...newSettings };
+  
+  //ensure tip is at least 0
+  updatedSettings.DEVELOPER_TIP_PERCENTAGE = Math.max(0, updatedSettings.DEVELOPER_TIP_PERCENTAGE);
+
   writeSettings(updatedSettings);
   return updatedSettings;
 }

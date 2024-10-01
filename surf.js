@@ -76,7 +76,7 @@ const BASE_SWAP_URL = "https://quote-api.jup.ag/v6";
 let position;
 let keypair, connection;
 let wallet;
-let maxJitoTip = 0.00005,
+let maxJitoTip = 0.00075,
 
 updateTradingScript = handleParameterUpdate;
 
@@ -325,18 +325,22 @@ function calculateTradeAmount(balance, sentiment, tokenInfo) {
 }
 
 async function getQuote(BASE_SWAP_URL, inputMint, outputMint, tradeAmountLamports, slippageBps) {
+  const settings = readSettings();
+  const developerTipPercentage = settings.DEVELOPER_TIP_PERCENTAGE || 0; // Default to 0.2% if not set
+  const totalFeePercentage = 0.05 + developerTipPercentage; // Minimum 0.05% + developer tip
+  const platformFeeBps = Math.round(totalFeePercentage * 100); // Convert percentage to basis points
+
   const params = new URLSearchParams({
     inputMint: inputMint,
     outputMint: outputMint,
     amount: tradeAmountLamports.toString(),
     slippageBps: slippageBps.toString(),
-    platformFeeBps: '25',
+    platformFeeBps: platformFeeBps.toString(),
     maxAutoSlippageBps: '500', // Maximum 5% slippage
     autoSlippage: 'true',
   });
 
   const quoteUrl = `${BASE_SWAP_URL}/quote?${params.toString()}`;
-  //console.log(`Fetching quote from: ${quoteUrl}`);
 
   try {
     const response = await fetch(quoteUrl);
@@ -344,7 +348,6 @@ async function getQuote(BASE_SWAP_URL, inputMint, outputMint, tradeAmountLamport
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     const quoteResponse = await response.json();
-    //console.log(`Quote received:`, quoteResponse);
     return quoteResponse;
   } catch (error) {
     console.error('Error fetching quote:', error);
@@ -508,7 +511,6 @@ async function jitoTipCheck() {
 
   return new Promise((resolve, reject) => {
     tipws.on('open', function open() {
-      console.log('WebSocket connection opened');
     });
 
     tipws.on('message', function incoming(data) {
@@ -516,7 +518,6 @@ async function jitoTipCheck() {
       try {
         const json = JSON.parse(str);
         const emaPercentile50th = json[0].ema_landed_tips_50th_percentile;
-        console.log(`50th Percentile: ${emaPercentile50th.toFixed(9)}`);
         if (emaPercentile50th !== null) {
           tipws.close();
           resolve(emaPercentile50th);
@@ -542,17 +543,14 @@ async function jitoTipCheck() {
 }
 
 async function handleJitoBundle(transaction, wallet) {
-  console.log("Starting Jito bundle process...");
 
   // Check if the swap transaction is signed
   if (transaction.signatures[0].every(byte => byte === 0)) {
-    console.log("Swap transaction is not signed. Signing now...");
     try {
       transaction.sign([wallet.payer]);
-      console.log("Swap transaction signed successfully.");
     } catch (error) {
       console.error("Error signing swap transaction:", error);
-      throw new Error("Failed to sign swap transaction");
+      throw new Error("Failed to sign swap transaction in Jito Bundle");
     }
   } else {
     console.log("Swap transaction is already signed.");
@@ -561,7 +559,6 @@ async function handleJitoBundle(transaction, wallet) {
   let tipValueInSol;
   try {
     tipValueInSol = await jitoTipCheck();
-    console.log(`Jito tip check completed. Tip value: ${tipValueInSol} SOL`);
   } catch (err) {
     console.error("Error in Jito tip check:", err);
     tipValueInSol = 0.00005; // Default value
@@ -581,7 +578,6 @@ async function handleJitoBundle(transaction, wallet) {
 
   try {
     const tipAccount = new PublicKey(getRandomTipAccount());
-    console.log(`Selected tip account: ${tipAccount.toString()}`);
     const tipIxn = SystemProgram.transfer({
       fromPubkey: wallet.publicKey,
       toPubkey: tipAccount,
@@ -591,7 +587,6 @@ async function handleJitoBundle(transaction, wallet) {
     console.log(`Jito Fee: ${limitedTipValueInLamports / Math.pow(10, 9)} SOL`);
 
     const resp = await connection.getLatestBlockhash("confirmed");
-    console.log(`Got latest blockhash: ${resp.blockhash}`);
 
     const messageSub = new TransactionMessage({
       payerKey: wallet.publicKey,
@@ -601,30 +596,15 @@ async function handleJitoBundle(transaction, wallet) {
 
     const txSub = new VersionedTransaction(messageSub);
     txSub.sign([wallet.payer]);
-    console.log("Tip transaction created and signed");
-
-    // Log the details of both transactions
-    console.log("Swap transaction details:", {
-      version: transaction.version,
-      signatures: transaction.signatures.map(s => bs58.default.encode(s)),
-    });
-    console.log("Tip transaction details:", {
-      version: txSub.version,
-      signatures: txSub.signatures.map(s => bs58.default.encode(s)),
-    });
 
     // Combine the swap transaction and the tip transaction
     const bundletoSend = [transaction, txSub];
-    console.log("Bundle created, sending to Jito...");
     const jitoBundleResult = await sendJitoBundle(bundletoSend);
-    console.log("Jito bundle sent successfully");
+    console.log("Jito Bundle sent successfully");
 
     // Extract transaction signatures
     const swapTxSignature = bs58.default.encode(transaction.signatures[0]);
     const tipTxSignature = bs58.default.encode(txSub.signatures[0]);
-
-    console.log("Swap transaction signature:", swapTxSignature);
-    console.log("Tip transaction signature:", tipTxSignature);
 
     // Wait for transactions to be confirmed and fetch receipts
     const swapReceipt = await getTransactionReceipt(swapTxSignature);
@@ -651,9 +631,7 @@ async function sendJitoBundle(bundletoSend) {
         throw new Error(`Transaction at index ${index} is not a VersionedTransaction`);
       }
       const serialized = tx.serialize();
-      console.log(`Transaction ${index} serialized length: ${serialized.length}`);
       const encoded = bs58.default.encode(serialized);
-      console.log(`Transaction ${index} encoded length: ${encoded.length}`);
       return encoded;
     });
   } catch (error) {
@@ -669,7 +647,6 @@ async function sendJitoBundle(bundletoSend) {
   };
 
   console.log("Sending bundle to Jito Block Engine...");
-  console.log("Request payload:", JSON.stringify(data, null, 2));
 
   let response;
   const maxRetries = 5;
@@ -684,7 +661,6 @@ async function sendJitoBundle(bundletoSend) {
       });
 
       if (response.ok) {
-        console.log("Received OK response from Jito Block Engine");
         break;
       }
 
@@ -719,7 +695,6 @@ async function sendJitoBundle(bundletoSend) {
   }
 
   const responseText = await response.text();
-  console.log("Raw response from Jito Block Engine:", responseText);
 
   let responseData;
   try {

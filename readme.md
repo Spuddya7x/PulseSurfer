@@ -121,8 +121,9 @@ Edit the `.env` file and fill in your:
 
 },
 
-"INTERVAL": 900000  //Do not edit this parameter
+"INTERVAL": 900000,  //Do not edit this parameter
 
+"DEVELOPER_TIP_PERCENTAGE": 0 // In % terms, this is a tip for the developers. This goes towards further development of the bot. This is placed on top of a mandatory 0.05% fee.
 }
 
 ```
