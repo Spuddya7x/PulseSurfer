@@ -10,6 +10,7 @@ const rateLimit = require("express-rate-limit");
 const dotenv = require('dotenv');
 const cors = require('cors');
 const session = require('express-session');
+const { emit } = require('process');
 
 // Load environment variables
 dotenv.config();
@@ -18,6 +19,7 @@ const app = express();
 
 // Settings functionality
 const SETTINGS_PATH = path.join(__dirname, 'settings.json');
+const STATE_FILE_PATH = path.join(__dirname, 'trading_state.json');
 
 const DEFAULT_SETTINGS = {
   SENTIMENT_BOUNDARIES: {
@@ -212,6 +214,42 @@ app.post('/api/params', (req, res) => {
   res.json({ message: 'Parameters updated successfully', params: tradingParams });
 });
 
+app.post('/api/restart', authenticate, (req, res) => {
+  paramUpdateEmitter.emit('restartTrading');
+  res.json({ success: true, message: 'Trading restart initiated' });
+});
+
+function saveState(state) {
+  try {
+    fs.writeFileSync(STATE_FILE_PATH, JSON.stringify(state, null, 2));
+    console.log("State saved successfully.");
+  } catch (error) {
+    console.error("Error saving state:", error);
+  }
+}
+
+function loadState() {
+  try {
+    if (fs.existsSync(STATE_FILE_PATH)) {
+      const data = fs.readFileSync(STATE_FILE_PATH, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error("Error loading state:", error);
+  }
+  return null;
+}
+
+function emitRestartTrading() {
+  clearRecentTrades();
+  io.emit('restartTrading');
+}
+
+function clearRecentTrades() {
+  recentTrades.length = 0; // This clears the array
+  console.log("Recent trades cleared");
+}
+
 // Socket.io setup
 io.on('connection', (socket) => {
   console.log('\nNew client connected');
@@ -271,5 +309,9 @@ module.exports = {
   addRecentTrade,
   emitTradingData,
   getLatestTradingData,
-  readSettings
+  readSettings,
+  emitRestartTrading,
+  clearRecentTrades,
+  saveState,
+  loadState
 };

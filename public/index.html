@@ -388,6 +388,26 @@
             cursor: not-allowed;
         }
 
+        /* New styles for the button container */
+        .button-container {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+
+        .button-container button {
+            flex: 1;
+            margin: 0 5px;
+        }
+
+        #restartButton {
+            background-color: var(--solana-cyan);
+        }
+
+        #restartButton:hover {
+            background-color: var(--light-cyan);
+        }
+
         @media (max-width: 768px) {
             body {
                 padding: 10px;
@@ -454,6 +474,14 @@
 
             .switch-container {
                 margin-top: 10px;
+            }
+
+            .button-container {
+                flex-direction: column;
+            }
+
+            .button-container button {
+                margin: 5px 0;
             }
         }
 
@@ -548,6 +576,7 @@
             <div class="grid">
                 <div class="card">
                     <h2>Trading Parameters</h2>
+                    <div id="updateFeedback"></div>
                     <form id="paramForm">
                         <div class="form-header">
                             <h3>Update Parameters</h3>
@@ -605,9 +634,11 @@
                                     max="1" step="0.0001">
                             </div>
                         </div>
-                        <button type="submit">Update Parameters</button>
+                        <div class="button-container">
+                            <button type="submit">Update Parameters</button>
+                            <button type="button" id="restartButton">Restart Trading</button>
+                        </div>
                     </form>
-                    <div id="updateFeedback"></div>
                 </div>
                 <div class="card">
                     <h2>Current Trading Data</h2>
@@ -712,59 +743,65 @@
         }
 
         function toggleReadOnlyMode() {
-                const isReadOnly = readOnlyToggle.checked;
-                inputFields.forEach(input => {
-                    if (input !== readOnlyToggle) {  // Don't disable the toggle itself
-                        input.disabled = isReadOnly;
-                    }
-                });
-                paramForm.querySelector('button[type="submit"]').disabled = isReadOnly;
-            }
+            const isReadOnly = readOnlyToggle.checked;
+            inputFields.forEach(input => {
+                if (input !== readOnlyToggle) {  // Don't disable the toggle itself
+                    input.disabled = isReadOnly;
+                }
+            });
+            paramForm.querySelector('button[type="submit"]').disabled = isReadOnly;
+            document.getElementById('restartButton').disabled = isReadOnly;
+        }
+
+        function initializeReadOnlyMode() {
+            readOnlyToggle.checked = true;
+            toggleReadOnlyMode();
+        }
 
         readOnlyToggle.addEventListener('change', toggleReadOnlyMode);
 
         function updateTradingData(data) {
-                tradingDataElement.innerHTML = `
-                <div class="data-item">
-                    <span class="data-label">Timestamp:</span>
-                    <span class="data-value">${data.timestamp || 'N/A'}</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">Net Change:</span>
-                    <span class="data-value highlight">$${data.netChange || '0.00'}</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">Current SOL Price:</span>
-                    <span class="data-value">$${data.price || 'N/A'}</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">Total Portfolio Value:</span>
-                    <span class="data-value">$${data.portfolioValue || 'N/A'}</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">SOL Balance:</span>
-                    <span class="data-value">${data.solBalance || 'N/A'} SOL</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">USDC Balance:</span>
-                    <span class="data-value">${data.usdcBalance || 'N/A'} USDC</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">Average Entry Price:</span>
-                    <span class="data-value">$${data.averageEntryPrice || 'N/A'}</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">Average Sell Price:</span>
-                    <span class="data-value">$${data.averageSellPrice || 'N/A'}</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">Fear & Greed Index:</span>
-                    <span class="data-value">${data.fearGreedIndex || 'N/A'} - ${data.sentiment || 'N/A'}</span>
-                </div>
-            `;
+            tradingDataElement.innerHTML = `
+            <div class="data-item">
+                <span class="data-label">Timestamp:</span>
+                <span class="data-value">${data.timestamp || 'N/A'}</span>
+            </div>
+            <div class="data-item">
+                <span class="data-label">Net Change:</span>
+                <span class="data-value highlight">$${data.netChange || '0.00'}</span>
+            </div>
+            <div class="data-item">
+                <span class="data-label">Current SOL Price:</span>
+                <span class="data-value">$${data.price || 'N/A'}</span>
+            </div>
+            <div class="data-item">
+                <span class="data-label">Total Portfolio Value:</span>
+                <span class="data-value">$${data.portfolioValue || 'N/A'}</span>
+            </div>
+            <div class="data-item">
+                <span class="data-label">SOL Balance:</span>
+                <span class="data-value">${data.solBalance || 'N/A'} SOL</span>
+            </div>
+            <div class="data-item">
+                <span class="data-label">USDC Balance:</span>
+                <span class="data-value">${data.usdcBalance || 'N/A'} USDC</span>
+            </div>
+            <div class="data-item">
+                <span class="data-label">Average Entry Price:</span>
+                <span class="data-value">$${data.averageEntryPrice || 'N/A'}</span>
+            </div>
+            <div class="data-item">
+                <span class="data-label">Average Sell Price:</span>
+                <span class="data-value">$${data.averageSellPrice || 'N/A'}</span>
+            </div>
+            <div class="data-item">
+                <span class="data-label">Fear & Greed Index:</span>
+                <span class="data-value">${data.fearGreedIndex || 'N/A'} - ${data.sentiment || 'N/A'}</span>
+            </div>
+        `;
 
-                updateFGI(data.fearGreedIndex);
-            }
+            updateFGI(data.fearGreedIndex);
+        }
 
         function updateFGI(value) {
             fgiValueElement.textContent = value;
@@ -829,137 +866,137 @@
         }
 
         function addTrade(trade) {
-            console.log('Adding trade:', trade);
+                console.log('Adding trade:', trade);
 
-            if (!trade) {
-                console.log('Trade object is null or undefined');
-                return;
+                if (!trade) {
+                    console.log('Trade object is null or undefined');
+                    return;
+                }
+
+                const placeholder = tradeListElement.querySelector('.trade-placeholder');
+                if (placeholder) {
+                    tradeListElement.removeChild(placeholder);
+                }
+
+                const tradeItem = document.createElement('li');
+                const tradeDate = new Date(trade.timestamp);
+                const formattedTime = tradeDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+
+                let tradeContent;
+                if (trade.success === false) {
+                    tradeContent = `${formattedTime}: ${trade.sentiment} transaction failed, click for details`;
+                    tradeItem.classList.add('trade-failed');
+                } else {
+                    const action = trade.type;
+                    const amount = parseFloat(trade.amount).toFixed(6);
+                    const price = parseFloat(trade.price).toFixed(2);
+                    const unit = 'SOL';
+                    tradeContent = `${formattedTime}: ${action} ${amount} ${unit} at $${price}`;
+                    tradeItem.classList.add(action.toLowerCase() === 'bought' ? 'trade-buy' : 'trade-sell');
+                }
+
+                console.log('Trade content:', tradeContent);
+
+                const tradeLink = document.createElement('a');
+                tradeLink.href = trade.txUrl || '#';
+                tradeLink.target = "_blank";
+                tradeLink.textContent = tradeContent;
+
+                if (trade.txUrl) {
+                    console.log('Creating clickable trade entry with URL:', trade.txUrl);
+                    tradeLink.addEventListener('mousemove', (e) => {
+                        tooltip.style.opacity = '1';
+                        tooltip.textContent = 'See on Solscan';
+                        updateTooltipPosition(e);
+                    });
+                    tradeLink.addEventListener('mouseout', () => {
+                        tooltip.style.opacity = '0';
+                    });
+                } else {
+                    console.log('No txUrl provided, creating non-clickable trade entry');
+                    tradeLink.style.pointerEvents = 'none';
+                }
+
+                tradeItem.appendChild(tradeLink);
+
+                tradeListElement.insertBefore(tradeItem, tradeListElement.firstChild);
+                if (tradeListElement.children.length > 10) {
+                    tradeListElement.removeChild(tradeListElement.lastChild);
+                }
+
+                console.log('Trade added to list');
             }
 
-            const placeholder = tradeListElement.querySelector('.trade-placeholder');
-            if (placeholder) {
-                tradeListElement.removeChild(placeholder);
+            function fetchRecentTrades() {
+                authenticatedFetch('/api/recent-trades')
+                    .then(response => response.json())
+                    .then(trades => {
+                        updateTradeList(trades);
+                    })
+                    .catch(error => console.error('Error fetching recent trades:', error));
             }
 
-            const tradeItem = document.createElement('li');
-            const tradeDate = new Date(trade.timestamp);
-            const formattedTime = tradeDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-
-            let tradeContent;
-            if (trade.success === false) {
-                tradeContent = `${formattedTime}: ${trade.sentiment} transaction failed, click for details`;
-                tradeItem.classList.add('trade-failed');
-            } else {
-                const action = trade.type;
-                const amount = parseFloat(trade.amount).toFixed(6);
-                const price = parseFloat(trade.price).toFixed(2);
-                const unit = 'SOL';
-                tradeContent = `${formattedTime}: ${action} ${amount} ${unit} at $${price}`;
-                tradeItem.classList.add(action.toLowerCase() === 'bought' ? 'trade-buy' : 'trade-sell');
+            function fetchInitialData() {
+                authenticatedFetch('/api/initial-data')
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Initial data not yet available');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        updateTradingData(data);
+                        updateTradeList(data.recentTrades);
+                        return authenticatedFetch('/api/params');
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        updateFormValues(data);
+                    })
+                    .catch(error => {
+                        console.error('Error fetching initial data:', error);
+                        if (error.message !== 'Authentication required') {
+                            showFeedback('Retrying in 5 seconds...', 'info');
+                            setTimeout(fetchInitialData, 5000);
+                        }
+                    });
             }
 
-            console.log('Trade content:', tradeContent);
-
-            const tradeLink = document.createElement('a');
-            tradeLink.href = trade.txUrl || '#';
-            tradeLink.target = "_blank";
-            tradeLink.textContent = tradeContent;
-
-            if (trade.txUrl) {
-                console.log('Creating clickable trade entry with URL:', trade.txUrl);
-                tradeLink.addEventListener('mousemove', (e) => {
-                    tooltip.style.opacity = '1';
-                    tooltip.textContent = 'See on Solscan';
-                    updateTooltipPosition(e);
-                });
-                tradeLink.addEventListener('mouseout', () => {
-                    tooltip.style.opacity = '0';
-                });
-            } else {
-                console.log('No txUrl provided, creating non-clickable trade entry');
-                tradeLink.style.pointerEvents = 'none';
-            }
-
-            tradeItem.appendChild(tradeLink);
-
-            tradeListElement.insertBefore(tradeItem, tradeListElement.firstChild);
-            if (tradeListElement.children.length > 10) {
-                tradeListElement.removeChild(tradeListElement.lastChild);
-            }
-
-            console.log('Trade added to list');
-        }
-
-        function fetchRecentTrades() {
-            authenticatedFetch('/api/recent-trades')
-                .then(response => response.json())
-                .then(trades => {
-                    updateTradeList(trades);
-                })
-                .catch(error => console.error('Error fetching recent trades:', error));
-        }
-
-        function fetchInitialData() {
+            // Initial check
             authenticatedFetch('/api/initial-data')
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Initial data not yet available');
-                    }
-                    return response.json();
+                .then(() => {
+                    showMainContent();
+                    fetchInitialData();
                 })
-                .then(data => {
-                    updateTradingData(data);
-                    updateTradeList(data.recentTrades);
-                    return authenticatedFetch('/api/params');
-                })
-                .then(response => response.json())
-                .then(data => {
-                    updateFormValues(data);
-                })
-                .catch(error => {
-                    console.error('Error fetching initial data:', error);
-                    if (error.message !== 'Authentication required') {
-                        showFeedback('Retrying in 5 seconds...', 'info');
-                        setTimeout(fetchInitialData, 5000);
-                    }
-                });
-        }
+                .catch(() => showLoginForm());
 
-        // Initial check
-        authenticatedFetch('/api/initial-data')
-            .then(() => {
-                showMainContent();
-                fetchInitialData();
-            })
-            .catch(() => showLoginForm());
+            socket.on('connect', () => {
+                console.log('Connected to WebSocket');
+                showFeedback('Connected to server', 'success');
+            });
 
-        socket.on('connect', () => {
-            console.log('Connected to WebSocket');
-            showFeedback('Connected to server', 'success');
-        });
+            socket.on('disconnect', () => {
+                console.log('Disconnected from WebSocket');
+                showFeedback('Disconnected from server', 'error');
+            });
 
-        socket.on('disconnect', () => {
-            console.log('Disconnected from WebSocket');
-            showFeedback('Disconnected from server', 'error');
-        });
+            socket.on('tradingUpdate', (data) => {
+                updateTradingData(data);
+                console.log('Received trading update:', data);
+                if (data.recentTrades && data.recentTrades.length > 0) {
+                    const mostRecentTrade = data.recentTrades[0];
+                    console.log('Most recent trade:', mostRecentTrade);
 
-        socket.on('tradingUpdate', (data) => {
-            updateTradingData(data);
-            console.log('Received trading update:', data);
-            if (data.recentTrades && data.recentTrades.length > 0) {
-                const mostRecentTrade = data.recentTrades[0];
-                console.log('Most recent trade:', mostRecentTrade);
+                    const tradeToAdd = mostRecentTrade;
 
-                const tradeToAdd = mostRecentTrade;
+                    console.log('Trade to add:', tradeToAdd);
+                    addTrade(tradeToAdd);
+                } else {
+                    console.log('No recent trades in the update');
+                }
+            });
 
-                console.log('Trade to add:', tradeToAdd);
-                addTrade(tradeToAdd);
-            } else {
-                console.log('No recent trades in the update');
-            }
-        });
-
-        paramForm.addEventListener('submit', (e) => {
+            paramForm.addEventListener('submit', (e) => {
                 e.preventDefault();
                 if (readOnlyToggle.checked) {
                     showFeedback('Cannot update parameters in read-only mode.', 'error');
@@ -999,9 +1036,32 @@
                     });
             });
 
+            document.getElementById('restartButton').addEventListener('click', function () {
+                if (confirm('Are you sure you want to restart trading? This will reset all position data.')) {
+                    restartTrading();
+                }
+            });
+
+            function restartTrading() {
+                authenticatedFetch('/api/restart', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showFeedback('Trading restarted successfully. Refreshing data...', 'success');
+                            fetchInitialData();
+                        } else {
+                            showFeedback('Failed to restart trading. Please try again.', 'error');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error restarting trading:', error);
+                        showFeedback('Error restarting trading. Please try again.', 'error');
+                    });
+            }
+
             document.addEventListener('DOMContentLoaded', () => {
                 fetchRecentTrades();
-                toggleReadOnlyMode();
+                initializeReadOnlyMode();
             });
 
             function showFeedback(message, type) {
@@ -1014,4 +1074,5 @@
             }
         </script>
 </body>
+
 </html>
