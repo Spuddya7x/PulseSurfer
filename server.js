@@ -10,6 +10,7 @@ const rateLimit = require("express-rate-limit");
 const dotenv = require('dotenv');
 const cors = require('cors');
 const session = require('express-session');
+const axios = require('axios');
 const { emit } = require('process');
 
 // Load environment variables
@@ -34,7 +35,6 @@ const DEFAULT_SETTINGS = {
     GREED: 0.03,
     EXTREME_GREED: 0.05
   },
-  INTERVAL: 900000, // Do not edit this
   DEVELOPER_TIP_PERCENTAGE: 0 // In percent, 0 = no tip. This is added to the 0.05% fixed fee.
 };
 
@@ -74,7 +74,7 @@ function writeSettings(settings) {
 function updateSettings(newSettings) {
   const currentSettings = readSettings();
   const updatedSettings = { ...currentSettings, ...newSettings };
-  
+
   //ensure tip is at least 0
   updatedSettings.DEVELOPER_TIP_PERCENTAGE = Math.max(0, updatedSettings.DEVELOPER_TIP_PERCENTAGE);
 
@@ -179,9 +179,18 @@ const paramUpdateEmitter = new EventEmitter();
 // Data storage
 let initialData = null;
 const recentTrades = [];
-const MAX_RECENT_TRADES = 7;
+const MAX_RECENT_TRADES = 50;
 
 function addRecentTrade(trade) {
+  if (recentTrades.length > 0) {
+    const lastTrade = recentTrades[0];
+    if (lastTrade.timestamp === trade.timestamp &&
+      lastTrade.amount === trade.amount &&
+      lastTrade.price === trade.price) {
+      console.log("Duplicate trade detected, not adding to recent trades");
+      return;
+    }
+  }
   recentTrades.unshift(trade);
   if (recentTrades.length > MAX_RECENT_TRADES) {
     recentTrades.pop();
@@ -258,45 +267,159 @@ io.on('connection', (socket) => {
   });
 });
 
+// Exchange rate functionality
+let currentExchangeRate = 0.909592; // Default value from the provided JSON
+let nextUpdateTime = Date.now(); // Initialize to current time
+
+async function fetchExchangeRate() {
+  try {
+    const response = await axios.get('https://open.er-api.com/v6/latest/USD');
+    const data = response.data;
+
+    if (data.result === "success") {
+      currentExchangeRate = data.rates.EUR;
+      console.log('Updated exchange rate:', currentExchangeRate);
+
+      // Set the next update time
+      nextUpdateTime = data.time_next_update_unix * 1000; // Convert to milliseconds
+      console.log('Next update time:', new Date(nextUpdateTime).toUTCString());
+
+      // Schedule the next update
+      const timeUntilNextUpdate = nextUpdateTime - Date.now();
+      setTimeout(fetchExchangeRate, timeUntilNextUpdate);
+    } else {
+      console.error('Failed to fetch exchange rate:', data);
+      // Retry after 1 hour if there's an error
+      setTimeout(fetchExchangeRate, 60 * 60 * 1000);
+    }
+  } catch (error) {
+    console.error('Error fetching exchange rate:', error);
+    // Retry after 1 hour if there's an error
+    setTimeout(fetchExchangeRate, 60 * 60 * 1000);
+  }
+}
+
+function calculateAPY(initialValue, currentValue, runTimeInDays) {
+  // Check if less than 24 hours have passed
+  if (runTimeInDays < 1) {
+    return null; // or you could return a specific message like "Insufficient time elapsed"
+  }
+
+  const totalReturn = (currentValue - initialValue) / initialValue;
+  const yearsElapsed = runTimeInDays / 365;
+  const apy = (Math.pow(1 + totalReturn, 1 / yearsElapsed) - 1) * 100;
+  return apy.toFixed(2);
+}
+
+// Call this function when your server starts
+fetchExchangeRate();
+
 function getLatestTradingData() {
   if (!initialData) {
     return null;
   }
   return {
-    ...initialData,
-    recentTrades,
-    averageEntryPrice: initialData.averageEntryPrice > 0 ? initialData.averageEntryPrice.toFixed(2) : 'N/A',
-    averageSellPrice: initialData.averageSellPrice > 0 ? initialData.averageSellPrice.toFixed(2) : 'N/A',
-    netChange: initialData.netChange.toFixed(3),
-    portfolioValue: initialData.portfolioValue.toFixed(2),
-    usdcBalance: initialData.usdcBalance.toFixed(2),
-    solBalance: initialData.solBalance.toFixed(6),
-    price: initialData.price.toFixed(2),
-    txUrl: initialData.txUrl
+    fearGreedIndex: initialData.fearGreedIndex,
+    sentiment: initialData.sentiment,
+    timestamp: initialData.timestamp,
+    netChange: parseFloat(initialData.netChange.toFixed(3)),
+    price: {
+      usd: parseFloat(initialData.price.toFixed(2)),
+      eur: parseFloat((initialData.price * currentExchangeRate).toFixed(2))
+    },
+    portfolioValue: parseFloat(initialData.portfolioValue.toFixed(2)),
+    solBalance: parseFloat(initialData.solBalance.toFixed(6)),
+    usdcBalance: parseFloat(initialData.usdcBalance.toFixed(2)),
+    portfolioWeighting: {
+      usdc: parseFloat(((initialData.usdcBalance / initialData.portfolioValue) * 100).toFixed(2)),
+      sol: parseFloat(((initialData.solBalance * initialData.price / initialData.portfolioValue) * 100).toFixed(2))
+    },
+    averageEntryPrice: initialData.averageEntryPrice > 0 ? parseFloat(initialData.averageEntryPrice.toFixed(2)) : 'N/A',
+    averageSellPrice: initialData.averageSellPrice > 0 ? parseFloat(initialData.averageSellPrice.toFixed(2)) : 'N/A',
+    programRunTime: formatTime(Date.now() - initialData.startTime),
+    portfolioTotalChange: parseFloat(((initialData.portfolioValue - initialData.initialPortfolioValue) / initialData.initialPortfolioValue * 100).toFixed(2)),
+    solanaMarketChange: parseFloat(((initialData.price - initialData.initialSolPrice) / initialData.initialSolPrice * 100).toFixed(2)),
+    estimatedAPY: calculateAPY(initialData.initialPortfolioValue, initialData.portfolioValue, (Date.now() - initialData.startTime) / (1000 * 60 * 60 * 24)),
+    recentTrades: recentTrades
   };
 }
 
 function emitTradingData(data) {
+  const currentTime = Date.now();
+
+  // Calculate program run time
+  const runTimeInMilliseconds = currentTime - data.startTime;
+  const runTimeInDays = runTimeInMilliseconds / (1000 * 60 * 60 * 24);
+  const days = Math.floor(runTimeInMilliseconds / (24 * 60 * 60 * 1000));
+  const hours = Math.floor((runTimeInMilliseconds % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+  const minutes = Math.floor((runTimeInMilliseconds % (60 * 60 * 1000)) / (60 * 1000));
+  const estimatedAPY = calculateAPY(data.initialPortfolioValue, data.portfolioValue, runTimeInDays);
+
   const emitData = {
     timestamp: data.timestamp,
-    price: (data.price).toFixed(2),
+    price: {
+      usd: parseFloat(data.price.toFixed(2)),
+      eur: parseFloat((data.price * currentExchangeRate).toFixed(2))
+    },
+    netChange: {
+      usd: parseFloat(data.netChange.toFixed(3)),
+      eur: parseFloat((data.netChange * currentExchangeRate).toFixed(3))
+    },
+    portfolioValue: {
+      usd: parseFloat(data.portfolioValue.toFixed(2)),
+      eur: parseFloat((data.portfolioValue * currentExchangeRate).toFixed(2))
+    },
     fearGreedIndex: data.fearGreedIndex,
     sentiment: data.sentiment,
-    usdcBalance: (data.usdcBalance).toFixed(2),
-    solBalance: (data.solBalance).toFixed(6),
-    portfolioValue: (data.portfolioValue).toFixed(2),
-    netChange: (data.netChange).toFixed(3),
-    averageEntryPrice: data.averageEntryPrice > 0 ? (data.averageEntryPrice).toFixed(2) : 'N/A',
-    averageSellPrice: data.averageSellPrice > 0 ? (data.averageSellPrice).toFixed(2) : 'N/A',
+    usdcBalance: parseFloat(data.usdcBalance.toFixed(2)),
+    solBalance: parseFloat(data.solBalance.toFixed(6)),
+    averageEntryPrice: {
+      usd: data.averageEntryPrice > 0 ? parseFloat(data.averageEntryPrice.toFixed(2)) : 'N/A',
+      eur: data.averageEntryPrice > 0 ? parseFloat((data.averageEntryPrice * currentExchangeRate).toFixed(2)) : 'N/A'
+    },
+    averageSellPrice: {
+      usd: data.averageSellPrice > 0 ? parseFloat(data.averageSellPrice.toFixed(2)) : 'N/A',
+      eur: data.averageSellPrice > 0 ? parseFloat((data.averageSellPrice * currentExchangeRate).toFixed(2)) : 'N/A'
+    },
     recentTrades: recentTrades,
     txId: data.txId || null,
-    txUrl: data.txId ? `https://solscan.io/tx/${data.txId}` : null
+    txUrl: data.txId ? `https://solscan.io/tx/${data.txId}` : null,
+    portfolioWeighting: {
+      usdc: parseFloat(((data.usdcBalance / data.portfolioValue) * 100).toFixed(2)),
+      sol: parseFloat(((data.solBalance * data.price / data.portfolioValue) * 100).toFixed(2))
+    },
+    programRunTime: `${days}:${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`,
+    portfolioTotalChange: parseFloat(((data.portfolioValue - data.initialPortfolioValue) / data.initialPortfolioValue * 100).toFixed(2)),
+    solanaMarketChange: parseFloat(((data.price - data.initialSolPrice) / data.initialSolPrice * 100).toFixed(2)),
+    estimatedAPY: estimatedAPY,
+    nextExchangeRateUpdate: new Date(nextUpdateTime).toUTCString(),
+    initialData: {
+      solPrice: {
+        usd: parseFloat(data.initialSolPrice.toFixed(2)),
+        eur: parseFloat((data.initialSolPrice * currentExchangeRate).toFixed(2))
+      },
+      portfolioValue: {
+        usd: parseFloat(data.initialPortfolioValue.toFixed(2)),
+        eur: parseFloat((data.initialPortfolioValue * currentExchangeRate).toFixed(2))
+      },
+      solBalance: parseFloat(data.initialSolBalance.toFixed(6)),
+      usdcBalance: parseFloat(data.initialUsdcBalance.toFixed(2))
+    }
   };
+
   console.log('Emitting trading data:', emitData);
   io.emit('tradingUpdate', emitData);
 
   // Update initialData with the latest data
   initialData = { ...data, recentTrades };
+}
+
+function formatTime(milliseconds) {
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 }
 
 module.exports = {

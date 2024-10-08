@@ -66,13 +66,18 @@ const TIP_ACCOUNTS = [
 const getRandomTipAccount = () =>
   TIP_ACCOUNTS[Math.floor(Math.random() * TIP_ACCOUNTS.length)];
 
-let { SENTIMENT_BOUNDARIES, SENTIMENT_MULTIPLIERS, INTERVAL } = readSettings();
+let { SENTIMENT_BOUNDARIES, SENTIMENT_MULTIPLIERS } = readSettings();
+const INTERVAL = 900000; // 15 minutes
+const DELAY_AFTER_INTERVAL = 45000; // 45 seconds
 const slippageBps = 200; // 5% slippage
-
+const BUNDLE_CONFIRMATION_TIMEOUT = 90 * 1000; //90 Second Bundle Confirmation Timeout
 const BASE_PRICE_URL = "https://price.jup.ag/v6/price?ids=";
 const BASE_SWAP_URL = "https://quote-api.jup.ag/v6";
 
 // Global variables
+let isCurrentExecutionCancelled = false;
+let globalTimeoutId;
+let nextScheduledExecutionTime = 0;
 let position;
 let keypair, connection;
 let wallet;
@@ -250,16 +255,42 @@ function formatTime(milliseconds) {
   return `${minutes}:${seconds}`;
 }
 
-function scheduleNextRun() {
+function getNextIntervalTime() {
   const now = new Date();
-  const delay = INTERVAL - (now.getTime() % INTERVAL);
-  console.log(`\nNext update in: ${formatTime(delay)}`);
+  const minutes = now.getMinutes();
+  const seconds = now.getSeconds();
+  const milliseconds = now.getMilliseconds();
 
-  const totalSeconds = Math.ceil(delay / 1000);
+  // Calculate minutes until next 15-minute mark
+  const minutesToNext = 15 - (minutes % 15);
 
-  // Start the progress bar
+  // Calculate total milliseconds to wait
+  let totalMs = (minutesToNext * 60 * 1000) - (seconds * 1000) - milliseconds + DELAY_AFTER_INTERVAL;
+
+  // If we're already past the 45-second mark, wait for the next interval
+  if (totalMs < DELAY_AFTER_INTERVAL) {
+    totalMs += INTERVAL;
+  }
+
+  return now.getTime() + totalMs;
+}
+
+function getWaitTime() {
+  const now = new Date().getTime();
+  const nextInterval = getNextIntervalTime();
+  return nextInterval - now;
+}
+
+function scheduleNextRun() {
+  const waitTime = getWaitTime();
+  const nextExecutionTime = new Date(Date.now() + waitTime);
+
+  console.log(`\nNext update at ${nextExecutionTime.toLocaleTimeString()} (in ${formatTime(waitTime)})`);
+
+  const totalSeconds = Math.ceil(waitTime / 1000);
+
   progressBar.start(totalSeconds, 0, {
-    remainingTime: formatTime(delay)
+    remainingTime: formatTime(waitTime)
   });
 
   let elapsedSeconds = 0;
@@ -273,9 +304,14 @@ function scheduleNextRun() {
     if (elapsedSeconds >= totalSeconds) {
       clearInterval(updateInterval);
       progressBar.stop();
-      main();
     }
   }, 1000);
+
+  globalTimeoutId = setTimeout(() => {
+    if (!isCurrentExecutionCancelled) {
+      main();
+    }
+  }, waitTime);
 }
 
 async function fetchPrice(BASE_PRICE_URL, TOKEN, maxRetries = 5, retryDelay = 5000) {
@@ -394,12 +430,7 @@ async function getFeeAccountAndSwapTransaction(
   }
 }
 
-async function executeSwap(
-  wallet,
-  sentiment,
-  USDC,
-  SOL
-) {
+async function executeSwap(wallet, sentiment, USDC, SOL) {
   try {
     console.log("Initiating swap");
 
@@ -440,18 +471,51 @@ async function executeSwap(
 
     // Use Jito bundling for the swap transaction
     const jitoBundleResult = await handleJitoBundle(wallet, isBuying, tradeAmountLamports, inputMint, outputMint);
-    console.log("Jito bundle sent, awaiting confirmation...");
     if (jitoBundleResult === null) {
-      console.log("Jito bundle failed.");
+      console.log("Jito bundle failed after all attempts.");
       return null;
     }
 
     // Verify balance changes
-    const postSwapBalances = await updatePortfolioBalances();
+    const maxAttempts = 10;
+    const delayMs = 2000;
+    let postSwapBalances;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+
+      postSwapBalances = await updatePortfolioBalances();
+
+      const solChanged = Math.abs(postSwapBalances.solBalance - preSwapBalances.solBalance) > 1e-6;
+      const usdcChanged = Math.abs(postSwapBalances.usdcBalance - preSwapBalances.usdcBalance) > 1e-6;
+
+      if (solChanged && usdcChanged) {
+        console.log(`Balances updated after ${attempt} attempts`);
+        break;
+      } else {
+        console.log(`Attempt ${attempt}: Waiting for both balances to update...`);
+      }
+
+      if (attempt === maxAttempts) {
+        console.error("Failed to detect balance changes after maximum attempts");
+        return null;
+      }
+    }
+
     const solChange = postSwapBalances.solBalance - preSwapBalances.solBalance;
     const usdcChange = postSwapBalances.usdcBalance - preSwapBalances.usdcBalance;
 
+    if (Math.abs(solChange) < 1e-9 || Math.abs(usdcChange) < 1e-6) {
+      console.error("Swap executed but balances didn't change significantly");
+      return null;
+    }
+
     const truePrice = Math.abs(usdcChange) / Math.abs(solChange);
+
+    if (!isFinite(truePrice) || truePrice <= 0) {
+      console.error("Invalid true price calculated", { solChange, usdcChange, truePrice });
+      return null;
+    }
 
     console.log(`Swap executed`);
     console.log(`Transaction Details: https://solscan.io/tx/${jitoBundleResult.swapTxSignature}`);
@@ -515,129 +579,118 @@ async function jitoTipCheck() {
 async function handleJitoBundle(wallet, isBuying, tradeAmount, inputMint, outputMint, totalTimeout = 300000) {
   const startTime = Date.now();
 
-  try {
-    // Get a fresh quote
-    const quoteResponse = await getQuote(BASE_SWAP_URL, inputMint, outputMint, tradeAmount, slippageBps);
+  while (Date.now() - startTime < totalTimeout) {
+    try {
+      // Get a fresh quote
+      const quoteResponse = await getQuote(BASE_SWAP_URL, inputMint, outputMint, tradeAmount, slippageBps);
 
-    // Get a fresh swap transaction
-    const swapTransaction = await getFeeAccountAndSwapTransaction(
-      new PublicKey("DGQRoyxV4Pi7yLnsVr1sT9YaRWN9WtwwcAiu3cKJsV9p"),
-      new PublicKey(inputMint),
-      quoteResponse,
-      wallet
-    );
+      // Get a fresh swap transaction
+      const swapTransaction = await getFeeAccountAndSwapTransaction(
+        new PublicKey("DGQRoyxV4Pi7yLnsVr1sT9YaRWN9WtwwcAiu3cKJsV9p"),
+        new PublicKey(inputMint),
+        quoteResponse,
+        wallet
+      );
 
-    if (!swapTransaction) {
-      throw new Error("Failed to get swap transaction");
+      if (!swapTransaction) {
+        throw new Error("Failed to get swap transaction");
+      }
+
+      const swapTransactionBuf = Buffer.from(swapTransaction, 'base64');
+      const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
+
+      // Create a tip transaction
+      const tipValueInSol = await jitoTipCheck();
+      const limitedTipValueInLamports = Math.floor(
+        Math.min(tipValueInSol, maxJitoTip) * 1_000_000_000 * 1.1
+      );
+
+      console.log(`Jito Fee: ${limitedTipValueInLamports / Math.pow(10, 9)} SOL`);
+
+      const tipAccount = new PublicKey(getRandomTipAccount());
+      const tipIxn = SystemProgram.transfer({
+        fromPubkey: wallet.publicKey,
+        toPubkey: tipAccount,
+        lamports: limitedTipValueInLamports
+      });
+
+      const resp = await connection.getLatestBlockhash("confirmed");
+
+      const messageSub = new TransactionMessage({
+        payerKey: wallet.publicKey,
+        recentBlockhash: resp.blockhash,
+        instructions: [tipIxn]
+      }).compileToV0Message();
+
+      const txSub = new VersionedTransaction(messageSub);
+      txSub.sign([wallet.payer]);
+
+      // Sign the swap transaction
+      transaction.sign([wallet.payer]);
+
+      // Combine the swap transaction and the tip transaction
+      const bundleToSend = [transaction, txSub];
+
+      const jitoBundleResult = await sendJitoBundle(bundleToSend);
+      console.log("Jito Bundle sent successfully");
+
+      // Extract transaction signatures
+      const swapTxSignature = bs58.default.encode(transaction.signatures[0]);
+      const tipTxSignature = bs58.default.encode(txSub.signatures[0]);
+
+      // Wait for bundle confirmation
+      const confirmationResult = await waitForBundleConfirmation(jitoBundleResult, BUNDLE_CONFIRMATION_TIMEOUT);
+
+      if (confirmationResult.status === "Landed") {
+        console.log("Bundle landed successfully");
+        return {
+          jitoBundleResult,
+          swapTxSignature,
+          tipTxSignature,
+          ...confirmationResult
+        };
+      } else if (confirmationResult.status === "Failed") {
+        console.log("Bundle failed. Retrying with a new quote.");
+        continue; // This will start a new iteration of the while loop
+      } else {
+        console.log("Bundle status inconclusive. Retrying with a new quote.");
+        continue;
+      }
+    } catch (error) {
+      console.log(`Error in bundle handling: ${error.message}. Retrying.`);
     }
-
-    const swapTransactionBuf = Buffer.from(swapTransaction, 'base64');
-    const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
-
-    // Create a tip transaction
-    const tipValueInSol = await jitoTipCheck();
-    const limitedTipValueInLamports = Math.floor(
-      Math.min(tipValueInSol, maxJitoTip) * 1_000_000_000 * 1.1
-    );
-
-    console.log(`Jito Fee: ${limitedTipValueInLamports / Math.pow(10, 9)} SOL`);
-
-    const tipAccount = new PublicKey(getRandomTipAccount());
-    const tipIxn = SystemProgram.transfer({
-      fromPubkey: wallet.publicKey,
-      toPubkey: tipAccount,
-      lamports: limitedTipValueInLamports
-    });
-
-    const resp = await connection.getLatestBlockhash("confirmed");
-
-    const messageSub = new TransactionMessage({
-      payerKey: wallet.publicKey,
-      recentBlockhash: resp.blockhash,
-      instructions: [tipIxn]
-    }).compileToV0Message();
-
-    const txSub = new VersionedTransaction(messageSub);
-    txSub.sign([wallet.payer]);
-
-    // Sign the swap transaction
-    transaction.sign([wallet.payer]);
-
-    // Combine the swap transaction and the tip transaction
-    const bundleToSend = [transaction, txSub];
-
-    const jitoBundleResult = await sendJitoBundle(bundleToSend);
-    console.log("Jito Bundle sent successfully");
-
-    // Extract transaction signatures
-    const swapTxSignature = bs58.default.encode(transaction.signatures[0]);
-    const tipTxSignature = bs58.default.encode(txSub.signatures[0]);
-
-    // Wait for bundle confirmation
-    const confirmationResult = await waitForBundleConfirmation(jitoBundleResult, wallet, isBuying, totalTimeout - (Date.now() - startTime));
-
-    if (confirmationResult.status === "Landed") {
-      console.log("Bundle landed successfully");
-      return {
-        jitoBundleResult,
-        swapTxSignature,
-        tipTxSignature,
-        ...confirmationResult
-      };
-    } else {
-      throw new Error(`Bundle failed: ${confirmationResult.reason}`);
-    }
-  } catch (error) {
-    console.log(`Bundle handling failed: ${error.message}`);
-    return null;
   }
+
+  console.log("Exceeded total timeout for bundle attempts");
+  return null;
 }
 
-async function waitForBundleConfirmation(bundleId, wallet, isBuying, timeoutMs, maxRetries = 30, baseDelay = 2000) {
+async function waitForBundleConfirmation(bundleId, timeoutMs) {
   const startTime = Date.now();
-  const preSwapBalances = await updatePortfolioBalances();
+  const checkInterval = 2000; // Check every 2 seconds
 
-  for (let retry = 0; retry < maxRetries; retry++) {
-    if (Date.now() - startTime > timeoutMs) {
-      console.log("Confirmation timeout reached");
-      break;
-    }
-
+  while (Date.now() - startTime < timeoutMs) {
     try {
       const status = await getInFlightBundleStatus(bundleId);
 
       if (status === null) {
-        console.log(`Bundle not found. Retry ${retry + 1}`);
+        console.log("Bundle not found. Continuing to wait...");
       } else {
-        console.log(`Bundle status: ${status.status}. Retry ${retry + 1}`);
-        
-        if (status.status === "Landed") {
-          return status;
-        } else if (status.status === "Failed") {
+        console.log(`Bundle status: ${status.status}`);
+
+        if (status.status === "Landed" || status.status === "Failed") {
           return status;
         }
-        // For "Pending" or "Invalid", we continue to the next retry
+        // For "Pending" or "Invalid", we continue waiting
       }
     } catch (error) {
-      console.log(`Error fetching bundle status (retry ${retry + 1}):`, error.message);
+      console.log(`Error fetching bundle status:`, error.message);
     }
 
-    const delay = baseDelay * Math.pow(1.5, retry) * (1 + Math.random() * 0.1);
-    await new Promise(resolve => setTimeout(resolve, delay));
+    await new Promise(resolve => setTimeout(resolve, checkInterval));
   }
 
-  // If we've exhausted all retries, check balances as a fallback
-  console.log("Bundle status inconclusive. Checking balances as fallback...");
-  const postSwapBalances = await updatePortfolioBalances();
-  const solChange = postSwapBalances.solBalance - preSwapBalances.solBalance;
-  const usdcChange = postSwapBalances.usdcBalance - preSwapBalances.usdcBalance;
-
-  if ((isBuying && solChange > 0 && usdcChange < 0) || (!isBuying && solChange < 0 && usdcChange > 0)) {
-    console.log("Balance changes detected. Assuming swap was successful.");
-    return { status: "Landed", reason: "Balance change detected" };
-  }
-
-  return { status: "Failed", reason: "Max retries reached and no balance change detected" };
+  return { status: "Timeout", reason: "Confirmation timeout reached" };
 }
 
 async function getInFlightBundleStatus(bundleId) {
@@ -820,33 +873,47 @@ function logPositionUpdate(currentPrice) {
 }
 
 async function main() {
+  isCurrentExecutionCancelled = false;
   try {
-    //console.clear();
     position.incrementCycle();
+
+    if (isCurrentExecutionCancelled) {
+      console.log("Execution cancelled. Exiting main.");
+      return;
+    }
 
     const fearGreedIndex = await fetchFearGreedIndex();
     const sentiment = getSentiment(fearGreedIndex);
     const currentPrice = await fetchPrice(BASE_PRICE_URL, SOL);
     const timestamp = getTimestamp();
 
+    if (isCurrentExecutionCancelled) {
+      console.log("Execution cancelled. Exiting main.");
+      return;
+    }
+
     console.log(`\n--- Trading Cycle: ${timestamp} ---`);
     console.log(`Fear & Greed Index: ${fearGreedIndex} - Sentiment: ${sentiment}`);
     console.log(`Current SOL Price: $${currentPrice.toFixed(2)}`);
 
-    // Update portfolio balances at the start of each cycle
     await updatePortfolioBalances();
+
+    if (isCurrentExecutionCancelled) {
+      console.log("Execution cancelled. Exiting main.");
+      return;
+    }
 
     let swapResult = null;
     let recentTrade = null;
     let txId = null;
 
     if (sentiment !== "NEUTRAL") {
-      swapResult = await executeSwap(
-        wallet,
-        sentiment,
-        USDC,
-        SOL
-      );
+      swapResult = await executeSwap(wallet, sentiment, USDC, SOL);
+
+      if (isCurrentExecutionCancelled) {
+        console.log("Execution cancelled. Exiting main.");
+        return;
+      }
 
       if (swapResult) {
         txId = swapResult.txId;
@@ -859,6 +926,12 @@ async function main() {
         }
       }
     }
+
+    if (isCurrentExecutionCancelled) {
+      console.log("Execution cancelled. Exiting main.");
+      return;
+    }
+
     const enhancedStats = position.getEnhancedStatistics(currentPrice);
 
     console.log("\n--- Enhanced Trading Statistics ---");
@@ -885,7 +958,12 @@ async function main() {
       netChange: parseFloat(enhancedStats.netChange),
       averageEntryPrice: parseFloat(enhancedStats.averagePrices.entry),
       averageSellPrice: parseFloat(enhancedStats.averagePrices.sell),
-      txId
+      txId,
+      initialSolPrice: position.initialPrice,
+      initialPortfolioValue: position.initialValue,
+      initialSolBalance: position.initialSolBalance,
+      initialUsdcBalance: position.initialUsdcBalance,
+      startTime: position.startTime
     };
 
     emitTradingData(tradingData);
@@ -910,13 +988,15 @@ async function main() {
       tradingData,
       settings: readSettings()
     });
-    scheduleNextRun();
   } catch (error) {
     console.error('Error during main execution:', error);
     if (progressBar) {
       progressBar.stop();
     }
-    scheduleNextRun();
+  } finally {
+    if (!isCurrentExecutionCancelled) {
+      scheduleNextRun();
+    }
   }
 }
 
@@ -935,10 +1015,6 @@ function handleParameterUpdate(newParams) {
     SENTIMENT_MULTIPLIERS = updatedSettings.SENTIMENT_MULTIPLIERS;
     console.log('Sentiment multipliers updated. New multipliers:', SENTIMENT_MULTIPLIERS);
   }
-  if (updatedSettings.INTERVAL) {
-    INTERVAL = updatedSettings.INTERVAL;
-    console.log('Interval updated. New interval:', INTERVAL);
-  }
 
   console.log('Trading strategy will adjust in the next cycle.');
   console.log('----------------------------------\n');
@@ -948,9 +1024,58 @@ paramUpdateEmitter.on('paramsUpdated', handleParameterUpdate);
 
 paramUpdateEmitter.on('restartTrading', async () => {
   console.log("Restarting trading...");
+
+  // Signal the current execution to stop
+  isCurrentExecutionCancelled = true;
+
+  // Clear any existing scheduled runs
+  clearTimeout(globalTimeoutId);
+
+  // Stop the progress bar if it's running
+  if (progressBar) {
+    progressBar.stop();
+  }
+
+  // Wait a bit to ensure the current execution has a chance to exit
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
   await resetPosition();
-  console.log("Trading restarted. Beginning new trading cycle.");
-  main(); // Start a new trading cycle
+  console.log("Position reset. Waiting for next scheduled interval to start trading...");
+
+  // Reset the cancellation flag
+  isCurrentExecutionCancelled = false;
+
+  // Calculate the time until the next interval
+  const waitTime = getWaitTime();
+  const nextExecutionTime = new Date(Date.now() + waitTime);
+
+  console.log(`Next trading cycle will start at ${nextExecutionTime.toLocaleTimeString()} (in ${formatTime(waitTime)})`);
+
+  // Set up a progress bar for the wait time
+  const totalSeconds = Math.ceil(waitTime / 1000);
+  progressBar.start(totalSeconds, 0, {
+    remainingTime: formatTime(waitTime)
+  });
+
+  let elapsedSeconds = 0;
+  const updateInterval = setInterval(() => {
+    elapsedSeconds++;
+    const remainingSeconds = totalSeconds - elapsedSeconds;
+    progressBar.update(elapsedSeconds, {
+      remainingTime: formatTime(remainingSeconds * 1000)
+    });
+
+    if (elapsedSeconds >= totalSeconds) {
+      clearInterval(updateInterval);
+      progressBar.stop();
+    }
+  }, 1000);
+
+  // Schedule the next run at the correct interval
+  globalTimeoutId = setTimeout(() => {
+    console.log("Starting new trading cycle.");
+    main();
+  }, waitTime);
 });
 
 async function resetPosition() {
@@ -973,7 +1098,12 @@ async function resetPosition() {
     portfolioValue: position.getCurrentValue(currentPrice),
     netChange: 0,
     averageEntryPrice: 0,
-    averageSellPrice: 0
+    averageSellPrice: 0,
+    initialSolPrice: currentPrice,
+    initialPortfolioValue: position.getCurrentValue(currentPrice),
+    initialSolBalance: solBalance,
+    initialUsdcBalance: usdcBalance,
+    startTime: Date.now()
   };
 
   setInitialData(initialData);
@@ -1007,6 +1137,9 @@ async function resetPosition() {
 async function initialize() {
   await loadEnvironment();
 
+  // Clear any existing timeout
+  clearTimeout(globalTimeoutId);
+
   const savedState = loadState();
   if (savedState && savedState.position) {
     console.log("Found saved state. Loading...");
@@ -1025,7 +1158,6 @@ async function initialize() {
     const settings = readSettings();
     SENTIMENT_BOUNDARIES = settings.SENTIMENT_BOUNDARIES;
     SENTIMENT_MULTIPLIERS = settings.SENTIMENT_MULTIPLIERS;
-    INTERVAL = settings.INTERVAL;
   } else {
     console.log("No saved state found. Starting fresh.");
     await resetPosition();
@@ -1040,9 +1172,17 @@ async function initialize() {
     console.log(`Your Local IP: http://${localIpAddress}:${PORT}`);
     console.log('Listening for parameter updates from web UI...');
   });
+
+  // Schedule the first run at the next interval
+  const waitTime = getWaitTime();
+  const nextExecutionTime = new Date(Date.now() + waitTime);
+  console.log(`First trading cycle will start at ${nextExecutionTime.toLocaleTimeString()} (in ${formatTime(waitTime)})`);
+
+  globalTimeoutId = setTimeout(() => {
+    main();
+  }, waitTime);
 }
 
 (async function () {
   await initialize();
-  await main();
 })();
