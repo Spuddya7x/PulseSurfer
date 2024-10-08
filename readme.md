@@ -121,8 +121,6 @@ Edit the `.env` file and fill in your:
 
 },
 
-"INTERVAL": 900000,  //Do not edit this parameter
-
 "DEVELOPER_TIP_PERCENTAGE": 0 // In % terms, this is a tip for the developers. This goes towards further development of the bot. This is placed on top of a mandatory 0.05% fee.
 }
 
@@ -230,7 +228,9 @@ The web dashboard provides real-time information:
 
 ![Web UI Screenshot showing the dashboard](./webUI1.png "PulseSurfer Dashboard")
 
-![Web UI Screenshot showing the settings panel](./webUI2.png "PulseSurfer Settings")
+![Web UI Screenshot showing the trade log](./webUI2.png "PulseSurfer Trade Log")
+
+![Web UI Screenshot showing the trading parameters and performance](./webUI3.png "PulseSurfer Performance Data")
   
 
 ## ⚠️ Disclaimer
