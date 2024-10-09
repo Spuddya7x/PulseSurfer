@@ -96,6 +96,11 @@ function updateTradingData(data) {
 
     timestampElement.textContent = data.timestamp || 'Please Wait';
 
+    const versionElement = document.getElementById('versionNumber');
+    if (versionElement) {
+        versionElement.textContent = data.version ? `v${data.version}` : 'Version: Unknown';
+    }
+
     const formatValue = (value, prefix = '', suffix = '') => {
         if (value === null || value === undefined) return 'Please Wait';
         if (value === 'N/A') return 'Please Wait';
@@ -293,6 +298,7 @@ socket.on('disconnect', () => {
 
 socket.on('tradingUpdate', (data) => {
     updateTradingData(data);
+    console.log('Client received trading update with version:', data.version);
     console.log('Received trading update:', data);
     if (data.recentTrades && data.recentTrades.length > 0) {
         const mostRecentTrade = data.recentTrades[0];

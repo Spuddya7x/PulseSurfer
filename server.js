@@ -11,7 +11,6 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const session = require('express-session');
 const axios = require('axios');
-const { emit } = require('process');
 
 // Load environment variables
 dotenv.config();
@@ -311,6 +310,13 @@ function calculateAPY(initialValue, currentValue, runTimeInDays) {
   return apy.toFixed(2);
 }
 
+function getRunTimeInDays(startTime) {
+  const currentTime = Date.now();
+  const runTimeInMilliseconds = currentTime - startTime;
+  const runTimeInDays = runTimeInMilliseconds / (1000 * 60 * 60 * 24);
+  return runTimeInDays;
+}
+
 // Call this function when your server starts
 fetchExchangeRate();
 
@@ -318,7 +324,12 @@ function getLatestTradingData() {
   if (!initialData) {
     return null;
   }
+  const days = getRunTimeInDays(initialData.startTime);
+  const estimatedAPY = calculateAPY(initialData.initialPortfolioValue, initialData.portfolioValue, days);
+
+  console.log(`Server Version: ${initialData.version}`);
   return {
+    version: initialData.version,
     fearGreedIndex: initialData.fearGreedIndex,
     sentiment: initialData.sentiment,
     timestamp: initialData.timestamp,
@@ -327,7 +338,10 @@ function getLatestTradingData() {
       usd: parseFloat(initialData.price.toFixed(2)),
       eur: parseFloat((initialData.price * currentExchangeRate).toFixed(2))
     },
-    portfolioValue: parseFloat(initialData.portfolioValue.toFixed(2)),
+    portfolioValue: {
+      usd: parseFloat(initialData.portfolioValue.toFixed(2)),
+      eur: parseFloat((initialData.portfolioValue * currentExchangeRate).toFixed(2))
+    },
     solBalance: parseFloat(initialData.solBalance.toFixed(6)),
     usdcBalance: parseFloat(initialData.usdcBalance.toFixed(2)),
     portfolioWeighting: {
@@ -339,23 +353,21 @@ function getLatestTradingData() {
     programRunTime: formatTime(Date.now() - initialData.startTime),
     portfolioTotalChange: parseFloat(((initialData.portfolioValue - initialData.initialPortfolioValue) / initialData.initialPortfolioValue * 100).toFixed(2)),
     solanaMarketChange: parseFloat(((initialData.price - initialData.initialSolPrice) / initialData.initialSolPrice * 100).toFixed(2)),
-    estimatedAPY: calculateAPY(initialData.initialPortfolioValue, initialData.portfolioValue, (Date.now() - initialData.startTime) / (1000 * 60 * 60 * 24)),
+    estimatedAPY: estimatedAPY,
     recentTrades: recentTrades
   };
 }
 
 function emitTradingData(data) {
-  const currentTime = Date.now();
+  console.log('Server emitting trading data with version:', data.version);
+  const days = getRunTimeInDays(data.startTime);
+  const hours = Math.floor((days % 1) * 24);
+  const minutes = Math.floor(((days % 1) * 24 % 1) * 60);
 
-  // Calculate program run time
-  const runTimeInMilliseconds = currentTime - data.startTime;
-  const runTimeInDays = runTimeInMilliseconds / (1000 * 60 * 60 * 24);
-  const days = Math.floor(runTimeInMilliseconds / (24 * 60 * 60 * 1000));
-  const hours = Math.floor((runTimeInMilliseconds % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
-  const minutes = Math.floor((runTimeInMilliseconds % (60 * 60 * 1000)) / (60 * 1000));
-  const estimatedAPY = calculateAPY(data.initialPortfolioValue, data.portfolioValue, runTimeInDays);
+  const estimatedAPY = calculateAPY(data.initialPortfolioValue, data.portfolioValue, days);
 
   const emitData = {
+    version: data.version,
     timestamp: data.timestamp,
     price: {
       usd: parseFloat(data.price.toFixed(2)),
@@ -388,7 +400,7 @@ function emitTradingData(data) {
       usdc: parseFloat(((data.usdcBalance / data.portfolioValue) * 100).toFixed(2)),
       sol: parseFloat(((data.solBalance * data.price / data.portfolioValue) * 100).toFixed(2))
     },
-    programRunTime: `${days}:${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`,
+    programRunTime: `${Math.floor(days)}:${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`,
     portfolioTotalChange: parseFloat(((data.portfolioValue - data.initialPortfolioValue) / data.initialPortfolioValue * 100).toFixed(2)),
     solanaMarketChange: parseFloat(((data.price - data.initialSolPrice) / data.initialSolPrice * 100).toFixed(2)),
     estimatedAPY: estimatedAPY,

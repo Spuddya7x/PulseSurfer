@@ -11,6 +11,7 @@ const { Wallet } = require('@project-serum/anchor');
 const fetch = require('cross-fetch');
 const os = require('os');
 const WebSocket = require('ws');
+const VERSION = require('./package.json').version;
 
 // Load environment variables
 function setupEnvFile() {
@@ -37,7 +38,7 @@ setupEnvFile();
 dotenv.config();
 //Start server after .env control
 const { server, paramUpdateEmitter, setInitialData, addRecentTrade, emitTradingData, readSettings, clearRecentTrades, saveState, loadState } = require('./server');
-
+const { version } = require('process');
 // Constants
 const USDC = {
   ADDRESS: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
@@ -77,7 +78,6 @@ const BASE_SWAP_URL = "https://quote-api.jup.ag/v6";
 // Global variables
 let isCurrentExecutionCancelled = false;
 let globalTimeoutId;
-let nextScheduledExecutionTime = 0;
 let position;
 let keypair, connection;
 let wallet;
@@ -948,6 +948,7 @@ async function main() {
     console.log(`Jito Bundle ID: ${txId}`);
 
     let tradingData = {
+      version: VERSION,
       timestamp,
       price: currentPrice,
       fearGreedIndex,
@@ -965,10 +966,12 @@ async function main() {
       initialUsdcBalance: position.initialUsdcBalance,
       startTime: position.startTime
     };
-
+    
+    console.log('Emitting trading data with version:', tradingData.version);
     emitTradingData(tradingData);
     saveState({
       position: {
+        version: VERSION,
         solBalance: position.solBalance,
         usdcBalance: position.usdcBalance,
         initialSolBalance: position.initialSolBalance,
@@ -1089,6 +1092,7 @@ async function resetPosition() {
   console.log(`Portfolio Value: $${position.getCurrentValue(currentPrice).toFixed(2)}`);
 
   const initialData = {
+    version: VERSION,
     timestamp: getTimestamp(),
     price: currentPrice,
     fearGreedIndex: await fetchFearGreedIndex(),
@@ -1164,6 +1168,7 @@ async function initialize() {
   }
 
   console.log("Initialization complete. Starting trading operations with Jito integration.");
+  console.log(`Version: ${VERSION}`);
 
   const PORT = process.env.PORT || 3000;
   const localIpAddress = getLocalIpAddress();
