@@ -297,17 +297,50 @@ async function fetchExchangeRate() {
     setTimeout(fetchExchangeRate, 60 * 60 * 1000);
   }
 }
-
 function calculateAPY(initialValue, currentValue, runTimeInDays) {
-  // Check if less than 24 hours have passed
-  if (runTimeInDays < 1) {
-    return null; // or you could return a specific message like "Insufficient time elapsed"
+  // Check if less than 48 hours have passed
+  if (runTimeInDays < 2) {
+    return "Insufficient data";
   }
 
-  const totalReturn = (currentValue - initialValue) / initialValue;
+  // Calculate SOL appreciation
+  const solAppreciation = (initialValue / initialData.initialSolPrice) * initialData.price;
+
+  // Calculate total return, excluding SOL/USDC market change
+  const totalReturn = (currentValue - solAppreciation) / initialValue;
+  
+  // Calculate elapsed time in years
   const yearsElapsed = runTimeInDays / 365;
-  const apy = (Math.pow(1 + totalReturn, 1 / yearsElapsed) - 1) * 100;
-  return apy.toFixed(2);
+
+  // User cost (replace with actual user input (0-9999))
+  const userCost = 0; 
+
+  // The operational costs and exponential APY impact are applied gradually,
+  // preventing drastic early distortions in APY calculations.
+  const costEffectScaling = Math.min(0.1 + (runTimeInDays / 28) * 0.9, 1);
+  
+  // Calculate operational cost factor
+  const opCostFactor = (((monthlyCost * 12) * yearsElapsed) / initialValue) * costEffectScaling;
+
+  // Calculate APY
+  const apy = (Math.pow(1 + (totalReturn - opCostFactor), (1 / yearsElapsed) * costEffectScaling) - 1) * 100;
+
+  // Determine the appropriate APY return format based on value
+  if (apy < -99.99) {
+    return "Err";  // Return "Err" for APY less than -99.99%
+  } else if (apy > 999) {
+    return "Err";  // Return "Err" for APY greater than 999%
+  } else if (apy < 0) {
+    return Math.round(apy);  // Round to the nearest whole number for negative values
+  } else if (apy < 0.1) {
+    return 0;  // Return 0 for values less than 0.1
+  } else if (apy >= 0.5 && apy < 10) {
+    return apy.toFixed(2);  // Round to 2 decimals for values between 0.5 and 10
+  } else if (apy >= 10 && apy < 20) {
+    return apy.toFixed(1);  // Round to 1 decimal for values between 10 and 20
+  } else if (apy >= 20) {
+    return Math.round(apy);  // Round to the nearest whole number for values 20 or higher
+  }
 }
 
 function getRunTimeInDays(startTime) {
