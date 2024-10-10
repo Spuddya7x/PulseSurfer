@@ -117,7 +117,7 @@ function updateTradingData(data) {
         { label: "USDC Balance", value: formatValue(data.usdcBalance, '', ' USDC'), icon: "fa-solid fa-credit-card" },
         { label: "Average Entry Price", value: formatValue(data.averageEntryPrice[priceUnit], priceLabel), icon: "fa-solid fa-sign-in-alt" },
         { label: "Average Sell Price", value: formatValue(data.averageSellPrice[priceUnit], priceLabel), icon: "fa-solid fa-sign-out-alt" },
-        { label: "Program Run Time (Days/Hours/Mins)", value: `${data.programRunTime || 'Please Wait'}`, icon: "fa-solid fa-clock" },
+        { label: "Program Run Time (Hours/Mins/Seconds)", value: `${data.programRunTime || 'Please Wait'}`, icon: "fa-solid fa-clock" },
         { label: "Estimated APY", value: formatValue(data.estimatedAPY, '', '%'), icon: "fa-solid fa-chart-line" }
     ];
 
@@ -187,7 +187,12 @@ function updateTradeList(trades) {
     if (!trades || trades.length === 0) {
         console.log('No trades available, adding placeholder');
         const placeholderItem = document.createElement('li');
-        placeholderItem.textContent = "No trades yet - check back soon!";
+        if (lastTradingData && lastTradingData.monitorMode) {
+            placeholderItem.textContent = "This instance is in monitor mode, and will not perform live trades";
+            placeholderItem.style.color = 'red';
+        } else {
+            placeholderItem.textContent = "No trades yet - check back soon!";
+        }
         placeholderItem.classList.add('trade-placeholder');
         tradeListElement.appendChild(placeholderItem);
     } else {

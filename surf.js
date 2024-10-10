@@ -11,6 +11,7 @@ const { Wallet } = require('@project-serum/anchor');
 const fetch = require('cross-fetch');
 const os = require('os');
 const WebSocket = require('ws');
+const csv = require('csv-writer').createObjectCsvWriter;
 const VERSION = require('./package.json').version;
 
 // Load environment variables
@@ -30,7 +31,6 @@ PORT=3000
     console.log('.env file created successfully. Please fill in your details.');
     process.exit(0);
   } else {
-    console.log('.env file already exists.');
   }
 }
 
@@ -38,7 +38,7 @@ setupEnvFile();
 dotenv.config();
 //Start server after .env control
 const { server, paramUpdateEmitter, setInitialData, addRecentTrade, emitTradingData, readSettings, clearRecentTrades, saveState, loadState } = require('./server');
-const { version } = require('process');
+const LOG_FILE_PATH = 'data_log.csv';
 // Constants
 const USDC = {
   ADDRESS: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
@@ -67,7 +67,7 @@ const TIP_ACCOUNTS = [
 const getRandomTipAccount = () =>
   TIP_ACCOUNTS[Math.floor(Math.random() * TIP_ACCOUNTS.length)];
 
-let { SENTIMENT_BOUNDARIES, SENTIMENT_MULTIPLIERS } = readSettings();
+let { SENTIMENT_BOUNDARIES, SENTIMENT_MULTIPLIERS, MONITOR_MODE } = readSettings();
 const INTERVAL = 900000; // 15 minutes
 const DELAY_AFTER_INTERVAL = 45000; // 45 seconds
 const slippageBps = 200; // 5% slippage
@@ -138,7 +138,6 @@ async function updatePortfolioBalances() {
     // Update the position with new balances
     position.updateBalances(solBalance, usdcBalance);
 
-    //console.log(`Updated Portfolio Balances - SOL: ${solBalance.toFixed(SOL.DECIMALS)}, USDC: ${usdcBalance.toFixed(USDC.DECIMALS)}`);
     return { solBalance, usdcBalance };
   } catch (error) {
     console.error("Error updating portfolio balances:", error);
@@ -157,7 +156,6 @@ async function loadEnvironment() {
     keypair = Keypair.fromSecretKey(new Uint8Array(privateKey));
     connection = new Connection(process.env.RPC_URL, 'confirmed');
     wallet = new Wallet(keypair);
-    console.log("Keypair verified and RPC connection established.");
   } catch (error) {
     console.error("Error verifying keypair:", error.message);
     process.exit(1);
@@ -319,10 +317,8 @@ async function fetchPrice(BASE_PRICE_URL, TOKEN, maxRetries = 5, retryDelay = 50
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      //console.log(`${BASE_PRICE_URL}${tokenId}`);
       const response = await axios.get(`${BASE_PRICE_URL}${tokenId}`);
       const price = response.data.data[tokenId].price;
-      //console.log(`Price fetched: $${price.toFixed(2)}`);
       return parseFloat(price.toFixed(2));
     } catch (error) {
       console.error(`Error fetching price (attempt ${attempt}/${maxRetries}):`, error.message);
@@ -422,7 +418,6 @@ async function getFeeAccountAndSwapTransaction(
     }
 
     const { swapTransaction } = await response.json();
-    //console.log("Swap transaction with fee account obtained");
     return swapTransaction;
   } catch (error) {
     console.error("Failed to get fee account and swap transaction:", error);
@@ -632,7 +627,6 @@ async function handleJitoBundle(wallet, isBuying, tradeAmount, inputMint, output
       const bundleToSend = [transaction, txSub];
 
       const jitoBundleResult = await sendJitoBundle(bundleToSend);
-      console.log("Jito Bundle sent successfully");
 
       // Extract transaction signatures
       const swapTxSignature = bs58.default.encode(transaction.signatures[0]);
@@ -837,10 +831,6 @@ function updatePositionFromSwap(swapResult, sentiment) {
   // Log the trade with the actual balance changes and true price
   position.logTrade(sentiment, price, solChange, usdcChange);
 
-  //console.log(`Trade executed at price: $${price.toFixed(4)}`);
-  //console.log(`SOL balance change: ${solChange.toFixed(SOL.DECIMALS)}`);
-  //console.log(`USDC balance change: ${usdcChange.toFixed(USDC.DECIMALS)}`);
-
   logPositionUpdate(price);
 
   const tradeType = solChange > 0 ? "Bought" : "Sold";
@@ -872,25 +862,43 @@ function logPositionUpdate(currentPrice) {
   console.log("------------------------\n");
 }
 
+const csvWriter = csv({
+  path: LOG_FILE_PATH,
+  header: [
+    { id: 'timestamp', title: 'Time/Date' },
+    { id: 'price', title: 'Price' },
+    { id: 'indexValue', title: 'Index Value' }
+  ],
+  append: true // This ensures we append to the file instead of overwriting it
+});
+
+async function logTradingData(timestamp, price, indexValue) {
+  const data = [{
+    timestamp: timestamp,
+    price: price,
+    indexValue: indexValue
+  }];
+
+  try {
+    await csvWriter.writeRecords(data);
+    console.log('Trading data logged successfully');
+  } catch (error) {
+    console.error('Error logging trading data:', error);
+  }
+}
+
 async function main() {
   isCurrentExecutionCancelled = false;
   try {
     position.incrementCycle();
-
-    if (isCurrentExecutionCancelled) {
-      console.log("Execution cancelled. Exiting main.");
-      return;
-    }
 
     const fearGreedIndex = await fetchFearGreedIndex();
     const sentiment = getSentiment(fearGreedIndex);
     const currentPrice = await fetchPrice(BASE_PRICE_URL, SOL);
     const timestamp = getTimestamp();
 
-    if (isCurrentExecutionCancelled) {
-      console.log("Execution cancelled. Exiting main.");
-      return;
-    }
+    await logTradingData(timestamp, currentPrice, fearGreedIndex);
+    console.log(`Data Logged: ${timestamp}, ${currentPrice}, ${fearGreedIndex}`);
 
     console.log(`\n--- Trading Cycle: ${timestamp} ---`);
     console.log(`Fear & Greed Index: ${fearGreedIndex} - Sentiment: ${sentiment}`);
@@ -907,7 +915,7 @@ async function main() {
     let recentTrade = null;
     let txId = null;
 
-    if (sentiment !== "NEUTRAL") {
+    if (!MONITOR_MODE && sentiment !== "NEUTRAL") {
       swapResult = await executeSwap(wallet, sentiment, USDC, SOL);
 
       if (isCurrentExecutionCancelled) {
@@ -926,10 +934,8 @@ async function main() {
         }
       }
     }
-
-    if (isCurrentExecutionCancelled) {
-      console.log("Execution cancelled. Exiting main.");
-      return;
+    else if (MONITOR_MODE) {
+      console.log("Monitor Mode: Data collected without trading.");
     }
 
     const enhancedStats = position.getEnhancedStatistics(currentPrice);
@@ -966,7 +972,7 @@ async function main() {
       initialUsdcBalance: position.initialUsdcBalance,
       startTime: position.startTime
     };
-    
+
     console.log('Emitting trading data with version:', tradingData.version);
     emitTradingData(tradingData);
     saveState({
@@ -1167,15 +1173,17 @@ async function initialize() {
     await resetPosition();
   }
 
+  if (MONITOR_MODE) {
+    console.log("---------- Monitor Mode: Data will be collected without trading. ----------");
+  } else {
   console.log("Initialization complete. Starting trading operations with Jito integration.");
+  }
   console.log(`Version: ${VERSION}`);
 
   const PORT = process.env.PORT || 3000;
   const localIpAddress = getLocalIpAddress();
   server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Your Local IP: http://${localIpAddress}:${PORT}`);
-    console.log('Listening for parameter updates from web UI...');
+    console.log(`Local Server Running On: http://${localIpAddress}:${PORT}`);
   });
 
   // Schedule the first run at the next interval

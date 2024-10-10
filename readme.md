@@ -121,7 +121,7 @@ Edit the `.env` file and fill in your:
 
 },
 
-"DEVELOPER_TIP_PERCENTAGE": 0 // In % terms, this is a tip for the developers. This goes towards further development of the bot. This is placed on top of a mandatory 0.05% fee.
+"DEVELOPER_TIP_PERCENTAGE": 0 // // In percent, 0 = no tip. This is added to the 0.05% fixed fee.
 }
 
 ```

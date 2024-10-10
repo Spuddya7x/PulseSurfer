@@ -5,7 +5,7 @@ node_modules/
 .env
 
 # Trading Data log
-trading_data.csv
+data_log.csv
 
 # User Settings
 settings.json

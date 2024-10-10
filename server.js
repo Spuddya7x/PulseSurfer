@@ -34,7 +34,8 @@ const DEFAULT_SETTINGS = {
     GREED: 0.03,
     EXTREME_GREED: 0.05
   },
-  DEVELOPER_TIP_PERCENTAGE: 0 // In percent, 0 = no tip. This is added to the 0.05% fixed fee.
+  DEVELOPER_TIP_PERCENTAGE: 0, // In percent, 0 = no tip. This is added to the 0.05% fixed fee.
+  MONITOR_MODE: false
 };
 
 function ensureSettingsFile() {
@@ -61,6 +62,11 @@ function readSettings() {
   }
 }
 
+function getMonitorMode() {
+  const settings = readSettings();
+  return settings.MONITOR_MODE === true;
+}
+
 function writeSettings(settings) {
   try {
     fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
@@ -76,6 +82,9 @@ function updateSettings(newSettings) {
 
   //ensure tip is at least 0
   updatedSettings.DEVELOPER_TIP_PERCENTAGE = Math.max(0, updatedSettings.DEVELOPER_TIP_PERCENTAGE);
+
+  // ensure MONITOR_MODE is a boolean
+  updatedSettings.MONITOR_MODE = updatedSettings.MONITOR_MODE === true;
 
   writeSettings(updatedSettings);
   return updatedSettings;
@@ -281,7 +290,7 @@ async function fetchExchangeRate() {
 
       // Set the next update time
       nextUpdateTime = data.time_next_update_unix * 1000; // Convert to milliseconds
-      console.log('Next update time:', new Date(nextUpdateTime).toUTCString());
+      console.log('Next USD/EUR update:', new Date(nextUpdateTime).toUTCString());
 
       // Schedule the next update
       const timeUntilNextUpdate = nextUpdateTime - Date.now();
@@ -387,7 +396,8 @@ function getLatestTradingData() {
     portfolioTotalChange: parseFloat(((initialData.portfolioValue - initialData.initialPortfolioValue) / initialData.initialPortfolioValue * 100).toFixed(2)),
     solanaMarketChange: parseFloat(((initialData.price - initialData.initialSolPrice) / initialData.initialSolPrice * 100).toFixed(2)),
     estimatedAPY: estimatedAPY,
-    recentTrades: recentTrades
+    recentTrades: recentTrades,
+    monitorMode: getMonitorMode()
   };
 }
 
@@ -438,6 +448,7 @@ function emitTradingData(data) {
     solanaMarketChange: parseFloat(((data.price - data.initialSolPrice) / data.initialSolPrice * 100).toFixed(2)),
     estimatedAPY: estimatedAPY,
     nextExchangeRateUpdate: new Date(nextUpdateTime).toUTCString(),
+    monitorMode: getMonitorMode(),
     initialData: {
       solPrice: {
         usd: parseFloat(data.initialSolPrice.toFixed(2)),
