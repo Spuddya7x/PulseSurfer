@@ -322,7 +322,7 @@ function calculateAPY(initialValue, currentValue, runTimeInDays) {
   const yearsElapsed = runTimeInDays / 365;
 
   // User cost (replace with actual user input (0-9999))
-  const userCost = 0; 
+  const monthlyCost= 0;
 
   // The operational costs and exponential APY impact are applied gradually,
   // preventing drastic early distortions in APY calculations.
