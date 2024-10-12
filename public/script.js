@@ -154,7 +154,7 @@ function updateTradingData(data) {
         { label: "Average Entry Price", value: formatValue(data.averageEntryPrice[priceUnit], priceLabel), icon: "fa-solid fa-sign-in-alt" },
         { label: "Average Sell Price", value: formatValue(data.averageSellPrice[priceUnit], priceLabel), icon: "fa-solid fa-sign-out-alt" },
         { label: "Program Run Time (Hours/Mins/Seconds)", value: `${data.programRunTime || 'Please Wait'}`, icon: "fa-solid fa-clock" },
-        { label: "Estimated APY", value: formatValue(data.estimatedAPY, '', typeof data.estimatedAPY === 'number' ? '%' : ''), icon: "fa-solid fa-chart-line" }
+        { label: "Estimated APY (Compared to Holding 100% SOL)", value: formatValue(data.estimatedAPY, '', typeof data.estimatedAPY === 'number' ? '%' : ''), icon: "fa-solid fa-chart-line" }
     ];
 
     tradingDataElement.innerHTML = dataPoints.map(point => `
