@@ -391,12 +391,12 @@ function getLatestTradingData() {
       sol: parseFloat(((initialData.solBalance * initialData.price / initialData.portfolioValue) * 100).toFixed(2))
     },
     averageEntryPrice: {
-      usd: data.averageEntryPrice > 0 ? parseFloat(data.averageEntryPrice.toFixed(2)) : 'N/A',
-      eur: data.averageEntryPrice > 0 ? parseFloat((data.averageEntryPrice * currentExchangeRate).toFixed(2)) : 'N/A'
+      usd: initialData.averageEntryPrice > 0 ? parseFloat(initialData.averageEntryPrice.toFixed(2)) : 'N/A',
+      eur: initialData.averageEntryPrice > 0 ? parseFloat((initialData.averageEntryPrice * currentExchangeRate).toFixed(2)) : 'N/A'
     },
     averageSellPrice: {
-      usd: data.averageSellPrice > 0 ? parseFloat(data.averageSellPrice.toFixed(2)) : 'N/A',
-      eur: data.averageSellPrice > 0 ? parseFloat((data.averageSellPrice * currentExchangeRate).toFixed(2)) : 'N/A'
+      usd: initialData.averageSellPrice > 0 ? parseFloat(initialData.averageSellPrice.toFixed(2)) : 'N/A',
+      eur: initialData.averageSellPrice > 0 ? parseFloat((initialData.averageSellPrice * currentExchangeRate).toFixed(2)) : 'N/A'
     },
     programRunTime: formatTime(Date.now() - initialData.startTime),
     portfolioTotalChange: parseFloat(((initialData.portfolioValue - initialData.initialPortfolioValue) / initialData.initialPortfolioValue * 100).toFixed(2)),
