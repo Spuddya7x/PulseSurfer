@@ -55,6 +55,42 @@ function login() {
         .catch(error => console.error('Error:', error));
 }
 
+	// Event listener for Enter key press
+	document.getElementById('passwordInput').addEventListener('keypress', function(event) {
+    if (event.key === 'Enter') {
+        login(); // Trigger the login on Enter press
+    }
+});
+
+function autoLogin(password) {
+    fetch('/api/login', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ password }),
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showMainContent();
+                fetchInitialData();
+            } 
+			// No error handling for incorrect password here, so the user can keep typing
+        })
+        .catch(error => console.error('Error:', error));
+}
+
+	// Event listener for automatic login when a valid password is typed
+	document.getElementById('passwordInput').addEventListener('input', function(event) {
+    const password = event.target.value;
+    
+    // Send the password to the server as it's typed
+    if (password.length > 0) { // Avoid sending empty requests
+        autoLogin(password);
+    }
+});
+
 function authenticatedFetch(url, options = {}) {
     return fetch(url, options)
         .then(response => {
