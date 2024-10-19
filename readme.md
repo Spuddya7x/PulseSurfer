@@ -136,7 +136,7 @@ Edit the `.env` file and fill in your:
 
 ```
 
-node surf.js
+npm start
 
 ```
 

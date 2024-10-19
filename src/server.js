@@ -11,15 +11,18 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const session = require('express-session');
 const axios = require('axios');
+const { getVersion } = require('./utils');
+const { getWallet, getConnection } = require('./globalState');
 
 // Load environment variables
-dotenv.config();
+dotenv.config({ path: path.join(__dirname, '..', 'user', '.env') });
 
 const app = express();
 
 // Settings functionality
-const SETTINGS_PATH = path.join(__dirname, 'settings.json');
-const STATE_FILE_PATH = path.join(__dirname, 'trading_state.json');
+const SETTINGS_PATH = path.join(__dirname, '..', 'user', 'settings.json');
+const STATE_FILE_PATH = path.join(__dirname, '..', 'user', 'saveState.json');
+
 
 const DEFAULT_SETTINGS = {
   SENTIMENT_BOUNDARIES: {
@@ -187,7 +190,7 @@ const paramUpdateEmitter = new EventEmitter();
 // Data storage
 let initialData = null;
 const recentTrades = [];
-const MAX_RECENT_TRADES = 50;
+const MAX_RECENT_TRADES = 7;
 
 function addRecentTrade(trade) {
   if (recentTrades.length > 0) {
@@ -232,6 +235,11 @@ app.post('/api/params', (req, res) => {
 });
 
 app.post('/api/restart', authenticate, (req, res) => {
+  console.log("Restart trading request received");
+  const wallet = getWallet();
+  const connection = getConnection();
+  console.log("Wallet in restart endpoint:", wallet ? "Defined" : "Undefined");
+  console.log("Connection in restart endpoint:", connection ? "Defined" : "Undefined");
   paramUpdateEmitter.emit('restartTrading');
   res.json({ success: true, message: 'Trading restart initiated' });
 });
@@ -286,7 +294,7 @@ async function fetchExchangeRate() {
 
     if (data.result === "success") {
       currentExchangeRate = data.rates.EUR;
-      console.log('Updated exchange rate:', currentExchangeRate);
+      console.log('\nUSD/EUR exchange rate:', currentExchangeRate);
 
       // Set the next update time
       nextUpdateTime = data.time_next_update_unix * 1000; // Convert to milliseconds
@@ -369,9 +377,9 @@ function getLatestTradingData() {
   const days = getRunTimeInDays(initialData.startTime);
   const estimatedAPY = calculateAPY(initialData.initialPortfolioValue, initialData.portfolioValue, days);
 
-  console.log(`Server Version: ${initialData.version}`);
+  console.log(`Server Version: ${getVersion()}`);
   return {
-    version: initialData.version,
+    version: getVersion(),
     fearGreedIndex: initialData.fearGreedIndex,
     sentiment: initialData.sentiment,
     timestamp: initialData.timestamp,
@@ -474,6 +482,7 @@ function emitTradingData(data) {
 
   // Update initialData with the latest data
   initialData = { ...data, recentTrades };
+  delete initialData.version; // Remove version from initialData
 }
 
 function formatTime(milliseconds) {
@@ -495,6 +504,7 @@ module.exports = {
   emitTradingData,
   getLatestTradingData,
   readSettings,
+  getMonitorMode,
   emitRestartTrading,
   clearRecentTrades,
   saveState,

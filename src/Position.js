@@ -31,6 +31,13 @@ class Position {
   }
 
   logTrade(sentiment, price, solChange, usdcChange) {
+    console.log('Logging trade:', { sentiment, price, solChange, usdcChange });
+
+    if (price === undefined || solChange === undefined || usdcChange === undefined) {
+      console.error('Invalid trade data. Skipping trade log.');
+      return;
+    }
+
     const tradeType = solChange > 0 ? 'buy' : 'sell';
     const solAmount = Math.abs(solChange);
     const usdcAmount = Math.abs(usdcChange);
@@ -55,6 +62,14 @@ class Position {
       this.netSolTraded -= solAmount;
     }
 
+    console.log('After trade update:', {
+      totalSolBought: this.totalSolBought,
+      totalUsdcSpent: this.totalUsdcSpent,
+      totalSolSold: this.totalSolSold,
+      totalUsdcReceived: this.totalUsdcReceived,
+      netSolTraded: this.netSolTraded
+    });
+
     // Update total volume
     this.totalVolumeSol += solAmount;
     this.totalVolumeUsdc += usdcAmount;
@@ -69,7 +84,17 @@ class Position {
   }
 
   getNetChange(currentPrice) {
-    console.log('getNetChange input:', { currentPrice, netSolTraded: this.netSolTraded });
+    console.log('getNetChange input:', {
+      currentPrice,
+      netSolTraded: this.netSolTraded,
+      totalUsdcReceived: this.totalUsdcReceived,
+      totalUsdcSpent: this.totalUsdcSpent
+    });
+
+    if (isNaN(this.netSolTraded)) {
+      console.error('netSolTraded is NaN. Resetting to 0.');
+      this.netSolTraded = 0;
+    }
 
     const currentValueOfTradedSol = this.netSolTraded * currentPrice;
     const netUsdcChange = this.totalUsdcReceived - this.totalUsdcSpent;

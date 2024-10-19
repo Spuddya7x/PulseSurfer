@@ -10,3 +10,9 @@ data_log.csv
 # User Settings
 settings.json
 trading_state.json
+fgi_log.csv
+saveState.json
+
+# User-specific files
+/user/*
+!/user/.gitkeep

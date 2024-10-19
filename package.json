@@ -1,8 +1,8 @@
 {
   "name": "pulsesurfer",
-  "version": "1.0.2",
+  "version": "1.1.2",
   "description": "",
-  "main": "surf.js",
+  "main": "start.js",
   "keywords": [],
   "author": "SpuddyA7X",
   "license": "ISC",
@@ -27,5 +27,8 @@
     "helmet": "^7.1.0",
     "http": "^0.0.1-security",
     "socket.io": "^4.7.5"
+  },
+  "scripts": {
+    "start": "node src/start.js"
   }
 }
