@@ -48,6 +48,8 @@ PulseSurfer is an automated trading bot that surfs the waves of market sentiment
 
 - A Solana wallet with SOL and USDC
 
+- (Recommended Minimum is $50 in SOL and USDC each)
+
   
 
 ### Installation
@@ -76,7 +78,10 @@ npm install
 
   
 
-3. Run the bot once with ```node surf```. This will generate you a .env file.
+3. Run the bot once with ```npm start```. You'll see a mode selection. Wave is currently unavailable, so please use surf in this instance.
+
+
+4. After entering ```surf``` the bot will automatically generate a ```settings.json``` and ```.env``` file for you.
 
 
 Edit the `.env` file and fill in your:
@@ -91,7 +96,7 @@ Edit the `.env` file and fill in your:
 
   
 
-4. Configure your trading parameters in `settings.json`:
+5. Configure your trading parameters in `settings.json` if you wish. The Default are good enough to get started however:
 
 ```json
 
@@ -132,16 +137,16 @@ Edit the `.env` file and fill in your:
 
   
 
-1. Start the trading bot and web server:
+1. Start the trading bot and web server from the root folder:
 
 ```
 
 npm start
 
 ```
+Followed by your choice of trading style, Wave or Surf.
 
   
-
 2. Open your web browser and navigate to `http://localhost:3000` (or your configured port).
 
   - Alternatively, you can port forward your selected port and use the machines Public IPv4 Address to connect remotely. You can run this program on a very lightweight Virtual Private Server, and connect remotely via the WebUI.
