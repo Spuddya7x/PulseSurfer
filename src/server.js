@@ -13,9 +13,104 @@ const session = require('express-session');
 const axios = require('axios');
 const { getVersion } = require('./utils');
 const { getWallet, getConnection } = require('./globalState');
+const { PublicKey } = require('@solana/web3.js');
+
+// Function to check and create necessary files
+function ensureRequiredFiles() {
+  const envPath = path.join(__dirname, '..', 'user', '.env');
+  const settingsPath = path.join(__dirname, '..', 'user', 'settings.json');
+  let filesCreated = false;
+
+  if (!fs.existsSync(envPath)) {
+    const defaultEnvContent = `
+PRIVATE_KEY=
+RPC_URL=
+ADMIN_PASSWORD=
+PORT=3000
+`;
+    fs.writeFileSync(envPath, defaultEnvContent.trim());
+    console.log('.env file created. Please fill in the required values before running the application again.');
+    filesCreated = true;
+  }
+
+  const DEFAULT_SETTINGS = {
+    SENTIMENT_BOUNDARIES: {
+      EXTREME_FEAR: 15,
+      FEAR: 35,
+      GREED: 65,
+      EXTREME_GREED: 85
+    },
+    SENTIMENT_MULTIPLIERS: {
+      EXTREME_FEAR: 0.05,
+      FEAR: 0.03,
+      GREED: 0.03,
+      EXTREME_GREED: 0.05
+    },
+    DEVELOPER_TIP_PERCENTAGE: 0,
+    MONITOR_MODE: false
+  };
+
+  if (!fs.existsSync(settingsPath)) {
+    fs.writeFileSync(settingsPath, JSON.stringify(DEFAULT_SETTINGS, null, 2));
+    console.log('settings.json file created with default values.');
+    filesCreated = true;
+  }
+
+  if (filesCreated) {
+    console.log('New configuration files have been created. Please review and update them as necessary before running the application again.');
+    return false;
+  }
+
+  return true;
+}
+
+// Function to validate .env contents
+function validateEnvContents() {
+  const requiredEnvVars = ['PRIVATE_KEY', 'RPC_URL', 'ADMIN_PASSWORD'];
+  const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+  if (missingVars.length > 0) {
+    console.error(`Error: The following required environment variables are missing or empty: ${missingVars.join(', ')}`);
+    return false;
+  }
+
+  // Validate PRIVATE_KEY
+  try {
+    new PublicKey(process.env.PRIVATE_KEY);
+  } catch (error) {
+    console.error('Error: PRIVATE_KEY is not a valid Solana public key.');
+    return false;
+  }
+
+  // Validate RPC_URL
+  if (!process.env.RPC_URL.startsWith('http://') && !process.env.RPC_URL.startsWith('https://')) {
+    console.error('Error: RPC_URL must be a valid URL starting with http:// or https://');
+    return false;
+  }
+
+  // Validate ADMIN_PASSWORD
+  if (process.env.ADMIN_PASSWORD.length < 8) {
+    console.error('Error: ADMIN_PASSWORD must be at least 8 characters long.');
+    return false;
+  }
+
+  return true;
+}
+
+// Call the function to ensure required files exist
+if (!ensureRequiredFiles()) {
+  console.log('Exiting to allow configuration updates. Please run the application again after updating the configuration files in the /user folder.');
+  process.exit(0);
+}
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '..', 'user', '.env') });
+
+// Validate .env contents
+if (!validateEnvContents()) {
+  console.log('Exiting due to invalid .env configuration. Please update the .env file and run the application again.');
+  process.exit(1);
+}
 
 const app = express();
 
@@ -23,45 +118,13 @@ const app = express();
 const SETTINGS_PATH = path.join(__dirname, '..', 'user', 'settings.json');
 const STATE_FILE_PATH = path.join(__dirname, '..', 'user', 'saveState.json');
 
-
-const DEFAULT_SETTINGS = {
-  SENTIMENT_BOUNDARIES: {
-    EXTREME_FEAR: 15,
-    FEAR: 35,
-    GREED: 65,
-    EXTREME_GREED: 85
-  },
-  SENTIMENT_MULTIPLIERS: {
-    EXTREME_FEAR: 0.05,
-    FEAR: 0.03,
-    GREED: 0.03,
-    EXTREME_GREED: 0.05
-  },
-  DEVELOPER_TIP_PERCENTAGE: 0, // In percent, 0 = no tip. This is added to the 0.05% fixed fee.
-  MONITOR_MODE: false
-};
-
-function ensureSettingsFile() {
-  if (!fs.existsSync(SETTINGS_PATH)) {
-    console.log('settings.json not found. Creating with default values...');
-    try {
-      fs.writeFileSync(SETTINGS_PATH, JSON.stringify(DEFAULT_SETTINGS, null, 2));
-      console.log('settings.json created successfully.');
-    } catch (error) {
-      console.error('Error creating settings.json:', error);
-      process.exit(1);
-    }
-  }
-}
-
 function readSettings() {
-  ensureSettingsFile();
   try {
     const settingsData = fs.readFileSync(SETTINGS_PATH, 'utf8');
     return JSON.parse(settingsData);
   } catch (error) {
     console.error('Error reading settings.json:', error);
-    return DEFAULT_SETTINGS;
+    return null;
   }
 }
 
@@ -129,12 +192,6 @@ const limiter = rateLimit({
   max: 100 // limit each IP to 100 requests per windowMs
 });
 app.use(limiter);
-
-// Check for ADMIN_PASSWORD
-if (!process.env.ADMIN_PASSWORD) {
-  console.error("ADMIN_PASSWORD is not set in the .env file. Please set it and restart the server.");
-  process.exit(1);
-}
 
 // Server setup
 let server;
@@ -314,6 +371,7 @@ async function fetchExchangeRate() {
     setTimeout(fetchExchangeRate, 60 * 60 * 1000);
   }
 }
+
 function calculateAPY(initialValue, currentValue, runTimeInDays) {
   // Check if less than 48 hours have passed
   if (runTimeInDays < 2) {
@@ -325,17 +383,17 @@ function calculateAPY(initialValue, currentValue, runTimeInDays) {
 
   // Calculate total return, excluding SOL/USDC market change
   const totalReturn = (currentValue - solAppreciation) / initialValue;
-  
+
   // Calculate elapsed time in years
   const yearsElapsed = runTimeInDays / 365;
 
   // User cost (replace with actual user input (0-9999))
-  const monthlyCost= 0;
+  const monthlyCost = 0;
 
   // The operational costs and exponential APY impact are applied gradually,
   // preventing drastic early distortions in APY calculations.
   const costEffectScaling = Math.min(0.1 + (runTimeInDays / 28) * 0.9, 1);
-  
+
   // Calculate operational cost factor
   const opCostFactor = (((monthlyCost * 12) * yearsElapsed) / initialValue) * costEffectScaling;
 
