@@ -7,7 +7,7 @@ const rl = readline.createInterface({
     output: process.stdout
 });
 
-const modeFile = path.join(__dirname, 'trading-mode.txt');
+const modeFile = path.join(__dirname, 'last-mode.txt');
 
 function startTrading(mode) {
     console.log(`Starting trading in ${mode} mode...`);

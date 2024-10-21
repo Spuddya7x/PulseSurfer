@@ -16,3 +16,4 @@ saveState.json
 # User-specific files
 /user/*
 !/user/.gitkeep
+src/last-mode.txt
