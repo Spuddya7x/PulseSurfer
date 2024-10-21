@@ -74,14 +74,6 @@ function validateEnvContents() {
     return false;
   }
 
-  // Validate PRIVATE_KEY
-  try {
-    new PublicKey(process.env.PRIVATE_KEY);
-  } catch (error) {
-    console.error('Error: PRIVATE_KEY is not a valid Solana public key.');
-    return false;
-  }
-
   // Validate RPC_URL
   if (!process.env.RPC_URL.startsWith('http://') && !process.env.RPC_URL.startsWith('https://')) {
     console.error('Error: RPC_URL must be a valid URL starting with http:// or https://');
